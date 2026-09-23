@@ -14,16 +14,24 @@ class AgentSettings(BaseSettings):
     openrouter_api_key: str
 
     # llm (openrouter, openai-compatible)
-    llm_model: str = "qwen/qwen3-14b"
+    llm_model: str = "qwen/qwen3.5-27b"
     llm_temperature: float = 0.7
     llm_max_tokens: int = 512
 
-    # tts (elevenlabs text-to-dialogue, eleven v3)
-    tts_model: str = "eleven_v3_conversational"
+    # tts (elevenlabs http convert, eleven v3 supports inline emotion tags)
+    tts_model: str = "eleven_v3"
     tts_stability: float = 0.5
 
     # audio
     sample_rate: int = 16000
+
+    # barge-in requires this many transcribed words while the bot is speaking
+    # (min-words gating is pipecat's documented answer to echo false-triggers)
+    interrupt_min_words: int = 3
+
+    # stt (elevenlabs realtime)
+    stt_filter_background_audio: bool = True
+    stt_no_verbatim: bool = True
 
     # vad (silero; pipecat defaults)
     vad_confidence: float = 0.7
