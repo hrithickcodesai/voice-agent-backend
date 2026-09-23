@@ -1,6 +1,8 @@
 import { Container } from "@cloudflare/containers";
+import { authEnabled, handleApi, type ApiEnv } from "./api";
+import { sessionUserId } from "./auth";
 
-interface Env {
+interface Env extends ApiEnv {
   VOICE_AGENT_CONTAINER: DurableObjectNamespace<VoiceAgentContainer>;
   ASSETS: Fetcher;
   ELEVENLABS_API_KEY: string;
@@ -113,12 +115,20 @@ export default {
       return env.ASSETS.fetch(new Request(assetUrl, request));
     }
 
+    // sign-in and the call log (Recents)
+    if (url.pathname.startsWith("/api/")) return handleApi(request, env, url);
+
     // Every call gets its own fresh container, keyed by a new id minted here.
     // pipecat generates its own session id inside the container with no way
     // to supply one, so the follow-up /sessions/{id}/... requests find their
     // container via this cookie instead. The bot shuts the container down
     // when the call ends, and a redial never reuses it.
     if (request.method === "POST" && url.pathname === "/start") {
+      // every call costs real money, so once sign-in is configured only
+      // signed-in users can start one
+      if (authEnabled(env) && !(await sessionUserId(request, env.SESSION_SECRET))) {
+        return json(401, { info: "sign_in_required" });
+      }
       // Right after other calls end, Cloudflare can hand a new call an
       // instance that's still being torn down ("Container suddenly
       // disconnected, try again"). /start has no state yet, so retry it on

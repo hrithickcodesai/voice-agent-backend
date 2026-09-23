@@ -188,6 +188,155 @@
     }
     .call-cta:active { filter: brightness(1.15); }
     .contact-actions { display: flex; gap: 0.6rem; flex-shrink: 0; }
+    .contact-avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+    .my-card { cursor: pointer; }
+    .my-card .contact-avatar { width: 58px; height: 58px; }
+    .my-card .contact-name { font-size: 1.2rem; font-weight: 600; }
+
+    /* ---- tab bar (Phone app: Favorites, Recents, Contacts, Keypad, Voicemail) ---- */
+    .tab-screen { padding-bottom: calc(58px + env(safe-area-inset-bottom)); }
+    .tab-bar {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      justify-content: space-around;
+      padding: 0.35rem 0 max(0.5rem, env(safe-area-inset-bottom));
+      background: rgba(22, 22, 24, 0.94);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-top: 1px solid #262628;
+      z-index: 30;
+    }
+    .tab-bar.hidden { display: none; }
+    .tab {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.15rem;
+      background: none;
+      border: none;
+      color: #8e8e93;
+      font: 500 0.66rem -apple-system, system-ui, sans-serif;
+      padding: 0.2rem 0.4rem;
+      flex: 1;
+    }
+    .tab svg { width: 26px; height: 26px; fill: currentColor; }
+    .tab.selected { color: #0a84ff; }
+    .tab.disabled { opacity: 0.45; pointer-events: none; }
+    @media (min-width: 700px) { .tab-bar { padding-bottom: 1.3rem; } }
+
+    /* ---- sign in ---- */
+    #screen-signin {
+      background: #000;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 2rem 1.6rem;
+      gap: 0.8rem;
+    }
+    .app-icon {
+      width: 88px;
+      height: 88px;
+      border-radius: 22px;
+      background: linear-gradient(180deg, #5bf675, #1fc93b);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 0.6rem;
+      box-shadow: 0 8px 24px rgba(52, 199, 89, 0.3);
+    }
+    .signin-title { font-size: 1.7rem; font-weight: 700; margin: 0; }
+    .signin-sub { color: #8e8e93; font-size: 0.98rem; margin: 0 0 1.4rem; line-height: 1.4; }
+    #google-btn { min-height: 44px; }
+    .signin-note { color: #636366; font-size: 0.75rem; margin-top: 1rem; }
+    .signin-error { color: #ff453a; font-size: 0.85rem; min-height: 1.2em; }
+
+    /* ---- recents ---- */
+    #screen-recents { background: #000; }
+    .recents-list { flex: 1; overflow-y: auto; padding: 0 0 0 1.1rem; }
+    .recent-row {
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
+      padding: 0.55rem 1.1rem 0.55rem 0;
+      border-bottom: 1px solid #1c1c1e;
+      cursor: pointer;
+    }
+    .recent-dir { width: 16px; flex-shrink: 0; display: flex; justify-content: center; }
+    .recent-dir svg { width: 13px; height: 13px; fill: #8e8e93; }
+    .recent-meta { flex: 1; min-width: 0; }
+    .recent-name { font-size: 1.05rem; font-weight: 600; }
+    .recent-row.unanswered .recent-name { color: #ff453a; }
+    .recent-sub { font-size: 0.85rem; color: #8e8e93; margin-top: 0.05rem; }
+    .recent-time { font-size: 0.9rem; color: #8e8e93; flex-shrink: 0; }
+    .info-btn {
+      width: 30px;
+      height: 30px;
+      border: none;
+      background: none;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .empty-state { color: #8e8e93; text-align: center; margin-top: 35%; font-size: 1.05rem; }
+
+    /* ---- call details ---- */
+    #screen-detail { background: #000; overflow-y: auto; }
+    .nav-bar { display: flex; align-items: center; padding: 0.6rem 0.7rem; flex-shrink: 0; }
+    .back-btn {
+      display: flex;
+      align-items: center;
+      gap: 0.1rem;
+      background: none;
+      border: none;
+      color: #0a84ff;
+      font: 400 1.05rem -apple-system, system-ui, sans-serif;
+      padding: 0.2rem;
+    }
+    .detail-head { display: flex; flex-direction: column; align-items: center; padding: 0.4rem 1rem 1rem; }
+    .detail-head .contact-avatar { width: 86px; height: 86px; font-size: 2rem; margin-bottom: 0.6rem; }
+    .detail-name { font-size: 1.6rem; font-weight: 600; }
+    .detail-actions { display: flex; gap: 0.6rem; margin-top: 1rem; width: 100%; max-width: 300px; }
+    .detail-action {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.3rem;
+      padding: 0.55rem 0;
+      border-radius: 0.8rem;
+      border: none;
+      background: #1c1c1e;
+      color: #0a84ff;
+      font: 400 0.75rem -apple-system, system-ui, sans-serif;
+    }
+    .detail-action svg { width: 22px; height: 22px; fill: #0a84ff; }
+    .group {
+      margin: 0 1rem 1.2rem;
+      background: #1c1c1e;
+      border-radius: 0.8rem;
+      overflow: hidden;
+    }
+    .group-head { font-size: 0.95rem; font-weight: 600; padding: 0.75rem 1rem 0.2rem; }
+    .group-row { display: flex; gap: 0.9rem; padding: 0.35rem 1rem 0.75rem; font-size: 0.95rem; }
+    .group-row .muted { color: #8e8e93; }
+    .transcript { padding: 0.4rem 1rem 0.9rem; display: flex; flex-direction: column; gap: 0.7rem; }
+    .transcript .who { display: block; font-size: 0.75rem; font-weight: 600; color: #8e8e93; margin-bottom: 0.1rem; }
+    .transcript .said { font-size: 0.95rem; line-height: 1.35; }
+    .transcript-empty { color: #8e8e93; font-size: 0.9rem; padding: 0.4rem 1rem 0.9rem; }
+    .danger-btn {
+      width: 100%;
+      background: none;
+      border: none;
+      color: #ff453a;
+      font: 400 1rem -apple-system, system-ui, sans-serif;
+      padding: 0.8rem 1rem;
+      text-align: left;
+    }
 
     /* ---- FaceTime in-call: full-bleed video with floating controls ---- */
     #screen-facetime {
@@ -413,9 +562,30 @@
 
     <div id="screens">
     <!-- Contact detail (iOS Contact card, one contact only) -->
-    <section id="screen-contacts" class="screen active">
+    <!-- Sign in (only when Google sign-in is configured) -->
+    <section id="screen-signin" class="screen">
+      <div class="app-icon">
+        <svg width="46" height="46" viewBox="0 0 24 24">
+          <path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.4.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.5 21 3 13.5 3 4.9 3 4.4 3.4 4 4 4h3.4c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.4 0 .8-.2 1L6.6 10.8Z" fill="#fff"/>
+        </svg>
+      </div>
+      <h1 class="signin-title">Talk with Alex</h1>
+      <p class="signin-sub">Your English speaking partner, one call away.<br>Sign in to start calling and keep your call history.</p>
+      <div id="google-btn"></div>
+      <div class="signin-error" id="signin-error"></div>
+      <div class="signin-note">We only use your name, email and photo for your account.</div>
+    </section>
+
+    <section id="screen-contacts" class="screen tab-screen active">
       <div class="contacts-header"><h1>Contacts</h1></div>
       <div class="contacts-list">
+        <div class="contact-row my-card" id="my-card" hidden>
+          <div class="contact-avatar" id="my-card-avatar"></div>
+          <div class="contact-meta">
+            <div class="contact-name" id="my-card-name"></div>
+            <div class="contact-sub">My Card &middot; tap to sign out</div>
+          </div>
+        </div>
         <div class="contact-row">
           <div class="contact-avatar">A</div>
           <div class="contact-meta">
@@ -435,6 +605,50 @@
             </button>
           </div>
         </div>
+      </div>
+    </section>
+
+    <!-- Recents: the call log -->
+    <section id="screen-recents" class="screen tab-screen">
+      <div class="contacts-header"><h1>Recents</h1></div>
+      <div class="recents-list" id="recents-list"></div>
+    </section>
+
+    <!-- Call details + transcript (the (i) button in Recents) -->
+    <section id="screen-detail" class="screen tab-screen">
+      <div class="nav-bar">
+        <button class="back-btn" id="detail-back">
+          <svg width="12" height="20" viewBox="0 0 12 20"><path d="M10 2 2 10l8 8" stroke="#0a84ff" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Recents
+        </button>
+      </div>
+      <div class="detail-head">
+        <div class="contact-avatar">A</div>
+        <div class="detail-name">Alex</div>
+        <div class="detail-actions">
+          <button class="detail-action" id="detail-call">
+            <svg viewBox="0 0 24 24"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.4.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.5 21 3 13.5 3 4.9 3 4.4 3.4 4 4 4h3.4c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.4 0 .8-.2 1L6.6 10.8Z"/></svg>
+            call
+          </button>
+          <button class="detail-action" id="detail-facetime">
+            <svg viewBox="0 0 24 24"><rect x="2.5" y="6" width="13" height="12" rx="2.5"/><path d="M17 10.2 21.5 7v10L17 13.8Z"/></svg>
+            video
+          </button>
+        </div>
+      </div>
+      <div class="group">
+        <div class="group-head" id="detail-date"></div>
+        <div class="group-row">
+          <span id="detail-time"></span>
+          <span><span id="detail-kind"></span><br><span class="muted" id="detail-duration"></span></span>
+        </div>
+      </div>
+      <div class="group">
+        <div class="group-head">Transcript</div>
+        <div class="transcript" id="detail-transcript"></div>
+      </div>
+      <div class="group">
+        <button class="danger-btn" id="detail-delete">Delete from Recents</button>
       </div>
     </section>
 
@@ -588,6 +802,30 @@
       </div>
       <div></div>
     </section>
+
+    <!-- Phone app tab bar; only Recents and Contacts do anything here -->
+    <nav class="tab-bar" id="tab-bar">
+      <button class="tab disabled" aria-label="Favorites">
+        <svg viewBox="0 0 24 24"><path d="M12 2.8l2.8 5.8 6.3.9-4.6 4.4 1.1 6.3L12 17.2l-5.6 3 1.1-6.3L2.9 9.5l6.3-.9L12 2.8Z"/></svg>
+        Favorites
+      </button>
+      <button class="tab" data-tab="recents" aria-label="Recents">
+        <svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm.9 5v5.2l3.9 2.3-.9 1.5-4.8-2.8V7h1.8Z"/></svg>
+        Recents
+      </button>
+      <button class="tab selected" data-tab="contacts" aria-label="Contacts">
+        <svg viewBox="0 0 24 24"><path d="M12 12a4.2 4.2 0 1 0 0-8.4 4.2 4.2 0 0 0 0 8.4Zm0 1.9c-4 0-8 2-8 5.1v1.4h16V19c0-3.1-4-5.1-8-5.1Z"/></svg>
+        Contacts
+      </button>
+      <button class="tab disabled" aria-label="Keypad">
+        <svg viewBox="0 0 24 24"><circle cx="6" cy="5" r="2"/><circle cx="12" cy="5" r="2"/><circle cx="18" cy="5" r="2"/><circle cx="6" cy="11" r="2"/><circle cx="12" cy="11" r="2"/><circle cx="18" cy="11" r="2"/><circle cx="6" cy="17" r="2"/><circle cx="12" cy="17" r="2"/><circle cx="18" cy="17" r="2"/><circle cx="12" cy="22" r="1.6"/></svg>
+        Keypad
+      </button>
+      <button class="tab disabled" aria-label="Voicemail">
+        <svg viewBox="0 0 24 24"><path d="M6.5 7.5a4.5 4.5 0 0 0-1.7 8.7h14.4a4.5 4.5 0 1 0-4.5-4.5c0 1.7.9 3.1 2.2 3.9H7.1a4.5 4.5 0 0 0-.6-8.1Zm0 1.8a2.7 2.7 0 1 1 0 5.4 2.7 2.7 0 0 1 0-5.4Zm11 0a2.7 2.7 0 1 1 0 5.4 2.7 2.7 0 0 1 0-5.4Z"/></svg>
+        Voicemail
+      </button>
+    </nav>
     </div>
   </div>
   </div>
@@ -603,7 +841,14 @@
       connected: document.getElementById("screen-connected"),
       facetime: document.getElementById("screen-facetime"),
       ended: document.getElementById("screen-ended"),
+      signin: document.getElementById("screen-signin"),
+      recents: document.getElementById("screen-recents"),
+      detail: document.getElementById("screen-detail"),
     };
+    const tabBar = document.getElementById("tab-bar");
+    // screens that sit above the tab bar, and which tab each belongs to
+    const TAB_OF = { contacts: "contacts", recents: "recents", detail: "recents" };
+    let homeTab = "contacts"; // where to return after a call, like iOS
     const callStatusEl = screens.calling.querySelector(".call-status");
     const timerEls = [document.getElementById("call-timer"), document.getElementById("ft-timer")];
     // audio-call and FaceTime screens each have their own mute/speaker
@@ -614,6 +859,14 @@
     function showScreen(name) {
       for (const el of Object.values(screens)) el.classList.remove("active");
       screens[name].classList.add("active");
+      const tab = TAB_OF[name];
+      tabBar.classList.toggle("hidden", !tab);
+      if (tab) {
+        homeTab = tab;
+        for (const t of tabBar.querySelectorAll("[data-tab]")) {
+          t.classList.toggle("selected", t.dataset.tab === tab);
+        }
+      }
     }
 
     // iOS-style status bar clock.
@@ -761,15 +1014,25 @@
       if (!last || last.who !== who) {
         last = { who, text: "", interim: "" };
         captions.push(last);
-        if (captions.length > 20) captions.shift();
+        // the whole call is kept (it becomes the saved transcript); only
+        // the last few lines are ever rendered
+        if (captions.length > 1000) captions.shift();
+        markCallDirty();
       }
       return last;
+    }
+    // finalised caption lines, in the shape the call log API stores
+    function transcriptMessages() {
+      return captions
+        .filter((c) => c.text.trim())
+        .map((c) => ({ role: c.who === "Alex" ? "assistant" : "user", text: c.text.trim() }));
     }
     function captionBotWord(word) {
       const w = (word || "").trim();
       if (!w) return;
       const line = currentLine("Alex");
       line.text += (line.text && !/^[,.!?;:]/.test(w) ? " " : "") + w;
+      markCallDirty();
       renderCaptions();
     }
     function captionUser({ text, final }) {
@@ -779,6 +1042,7 @@
       if (final) {
         line.text += (line.text ? " " : "") + t;
         line.interim = "";
+        markCallDirty();
       } else {
         line.interim = t;
       }
@@ -827,9 +1091,13 @@
       timerInterval = null;
     }
 
-    async function endCall(reason, { busy = false } = {}) {
+    async function endCall(reason, { busy = false, silent = false } = {}) {
       if (!callActive) return;
       callActive = false;
+      const status = busy ? "busy"
+        : reason === "Call Failed" ? "failed"
+        : connectedScreenShown ? "completed" : "cancelled";
+      finishCallLog(status);
       stopRingback();
       stopTimer();
       talkingHead?.stop();
@@ -849,6 +1117,7 @@
         remoteAudioEl.remove();
         remoteAudioEl = null;
       }
+      if (silent) return; // e.g. session expired: the caller shows sign-in
       screens.ended.querySelector(".call-status").textContent = reason || "Call Ended";
       showScreen("ended");
       if (busy) {
@@ -856,12 +1125,14 @@
       } else {
         await delay(1200);
       }
-      showScreen("contacts");
+      showScreen(homeTab === "recents" ? "recents" : "contacts");
+      if (homeTab === "recents") loadRecents();
     }
 
     async function startCall({ video = false } = {}) {
       callActive = true;
       isVideoCall = video;
+      startCallLog(video);
       connectedScreenShown = false;
       muted = false;
       speakerOn = false;
@@ -964,6 +1235,11 @@
             // container is free, which surfaces here as the error message.
             if (error?.data?.message === "line_busy") {
               endCall("Line Busy", { busy: true });
+            } else if (error?.data?.message === "sign_in_required") {
+              // session expired or signed out in another tab
+              endCall("Call Failed", { silent: true });
+              currentUser = null;
+              showSignIn();
             } else if (transportConnected) {
               endCall("Call Failed");
             }
@@ -1009,13 +1285,302 @@
       }
     }
 
-    document.getElementById("call-btn").addEventListener("click", () => startCall());
-    document.getElementById("facetime-btn").addEventListener("click", () => {
-      lipSyncCtx ??= new (window.AudioContext || window.webkitAudioContext)();
-      lipSyncCtx.resume();
-      startCall({ video: true });
-      startSelfView();
+    // ---------------- sign in ----------------
+    // Enabled only when the Worker has a Google client id (GET /api/config);
+    // locally (python dev server) there is no /api, so it stays off and calls
+    // work anonymously without a call log.
+    let authEnabled = false;
+    let currentUser = null;
+    async function api(path, options = {}) {
+      const res = await fetch(path, {
+        ...options,
+        headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+        credentials: "same-origin",
+      });
+      if (res.status === 401) {
+        currentUser = null;
+        throw Object.assign(new Error("signed out"), { status: 401 });
+      }
+      if (!res.ok) throw Object.assign(new Error(`${path} ${res.status}`), { status: res.status });
+      return res.json();
+    }
+
+    let googleClientId = null;
+    function loadGoogleScript() {
+      return new Promise((resolve, reject) => {
+        if (window.google?.accounts?.id) return resolve();
+        const s = document.createElement("script");
+        s.src = "https://accounts.google.com/gsi/client";
+        s.async = true;
+        s.onload = resolve;
+        s.onerror = () => reject(new Error("could not load Google sign-in"));
+        document.head.appendChild(s);
+      });
+    }
+    async function showSignIn() {
+      showScreen("signin");
+      const errEl = document.getElementById("signin-error");
+      errEl.textContent = "";
+      try {
+        await loadGoogleScript();
+        google.accounts.id.initialize({ client_id: googleClientId, callback: onGoogleCredential });
+        google.accounts.id.renderButton(document.getElementById("google-btn"), {
+          theme: "filled_black", size: "large", shape: "pill", text: "continue_with", width: 280,
+        });
+      } catch (e) {
+        errEl.textContent = e.message;
+      }
+    }
+    async function onGoogleCredential({ credential }) {
+      const errEl = document.getElementById("signin-error");
+      try {
+        const { user } = await api("/api/auth/google", { method: "POST", body: JSON.stringify({ credential }) });
+        signedIn(user);
+      } catch (e) {
+        errEl.textContent = "Sign-in failed, please try again.";
+      }
+    }
+    function signedIn(user) {
+      currentUser = user;
+      const card = document.getElementById("my-card");
+      card.hidden = false;
+      document.getElementById("my-card-name").textContent = user.name || user.email;
+      const av = document.getElementById("my-card-avatar");
+      av.replaceChildren();
+      if (user.picture) {
+        const img = document.createElement("img");
+        img.src = user.picture;
+        img.alt = "";
+        img.referrerPolicy = "no-referrer";
+        av.append(img);
+      } else {
+        av.textContent = (user.name || user.email).slice(0, 1).toUpperCase();
+      }
+      showScreen("contacts");
+    }
+    document.getElementById("my-card").addEventListener("click", async () => {
+      if (!confirm(`Sign out of ${currentUser?.email ?? "your account"}?`)) return;
+      await api("/api/auth/logout", { method: "POST" }).catch(() => {});
+      window.google?.accounts?.id?.disableAutoSelect();
+      currentUser = null;
+      document.getElementById("my-card").hidden = true;
+      showSignIn();
     });
+
+    // ---------------- call log ----------------
+    // A call record is created when dialling starts, and the full transcript
+    // is re-saved every few seconds while it changes, then once more on hang
+    // up - so a call cut off (e.g. iOS killing the tab) keeps its transcript.
+    let callLog = null; // { idPromise, dirty, timer }
+    function startCallLog(video) {
+      callLog = null;
+      if (!authEnabled || !currentUser) return;
+      const log = { dirty: false, timer: null };
+      log.idPromise = api("/api/calls", { method: "POST", body: JSON.stringify({ kind: video ? "facetime" : "audio" }) })
+        .then((r) => r.id)
+        .catch((e) => {
+          console.warn("could not create call log entry", e);
+          return null;
+        });
+      log.timer = setInterval(() => log.dirty && saveCallLog(log, {}), 10000);
+      callLog = log;
+    }
+    function markCallDirty() {
+      if (callLog) callLog.dirty = true;
+    }
+    async function saveCallLog(log, extra, { keepalive = false } = {}) {
+      const id = await log.idPromise;
+      if (!id) return;
+      log.dirty = false;
+      const body = JSON.stringify({ duration_s: callSeconds, messages: transcriptMessages(), ...extra });
+      fetch(`/api/calls/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body,
+        keepalive,
+      }).catch((e) => console.warn("call log save failed", e));
+    }
+    function finishCallLog(status) {
+      const log = callLog;
+      if (!log) return;
+      callLog = null;
+      clearInterval(log.timer);
+      // snapshot now: captions are cleared right after this
+      const messages = transcriptMessages();
+      const duration = callSeconds;
+      log.idPromise.then((id) => {
+        if (!id) return;
+        fetch(`/api/calls/${id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({ status, duration_s: duration, ended: true, messages }),
+          keepalive: true,
+        }).catch((e) => console.warn("call log save failed", e));
+      });
+    }
+    // the tab being closed/killed mid-call: last-chance save
+    window.addEventListener("pagehide", () => callLog && saveCallLog(callLog, {}, { keepalive: true }));
+
+    // ---------------- Recents ----------------
+    const recentsList = document.getElementById("recents-list");
+    const OUTGOING_ICON = '<svg viewBox="0 0 24 24"><path d="M5.6 9.8c1.2 2.4 3.2 4.3 5.6 5.6l1.9-1.9c.2-.2.6-.3.9-.2.9.3 2 .5 3 .5.5 0 .9.4.9.9v3c0 .5-.4.9-.9.9C9.6 18.6 3 12 3 4.4c0-.5.4-.9.9-.9h3c.5 0 .9.4.9.9 0 1.1.2 2.1.5 3 .1.3 0 .7-.2.9L5.6 9.8ZM14 2h8v8l-3-3-4 4-2-2 4-4-3-3Z"/></svg>';
+    const INFO_ICON = '<svg width="23" height="23" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke="#0a84ff" stroke-width="1.6"/><circle cx="12" cy="7.6" r="1.25" fill="#0a84ff"/><path d="M12 10.8v6.4" stroke="#0a84ff" stroke-width="1.9" stroke-linecap="round"/></svg>';
+
+    // iOS Recents time column: time today, "Yesterday", weekday this week, else date
+    function recentTimeLabel(ms) {
+      const d = new Date(ms);
+      const now = new Date();
+      const startOfDay = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+      const days = Math.round((startOfDay(now) - startOfDay(d)) / 86400000);
+      if (days === 0) return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+      if (days === 1) return "Yesterday";
+      if (days < 7) return d.toLocaleDateString([], { weekday: "long" });
+      return d.toLocaleDateString([], { day: "numeric", month: "numeric", year: "2-digit" });
+    }
+    function dayHeading(ms) {
+      const label = recentTimeLabel(ms);
+      if (label === "Yesterday" || !/\d:\d/.test(label)) {
+        return new Date(ms).toLocaleDateString([], { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+      }
+      return "Today";
+    }
+    function durationText(call) {
+      if (call.status === "cancelled") return "Cancelled";
+      if (call.status === "busy") return "Busy";
+      if (call.status === "failed") return "Failed";
+      const s = call.duration_s || 0;
+      if (s < 60) return `${s} second${s === 1 ? "" : "s"}`;
+      const m = Math.round(s / 60);
+      return `${m} minute${m === 1 ? "" : "s"}`;
+    }
+    const isUnanswered = (c) => c.status === "busy" || c.status === "failed";
+
+    async function loadRecents() {
+      if (!currentUser) {
+        recentsList.innerHTML = '<div class="empty-state">Sign in to see your recent calls</div>';
+        return;
+      }
+      let calls;
+      try {
+        ({ calls } = await api("/api/calls"));
+      } catch (e) {
+        if (e.status === 401) return showSignIn();
+        recentsList.innerHTML = '<div class="empty-state">Couldn\'t load Recents</div>';
+        return;
+      }
+      if (!calls.length) {
+        recentsList.innerHTML = '<div class="empty-state">No Recents</div>';
+        return;
+      }
+      recentsList.replaceChildren(...calls.map((call) => {
+        const row = document.createElement("div");
+        row.className = "recent-row" + (isUnanswered(call) ? " unanswered" : "");
+        row.innerHTML = `
+          <div class="recent-dir">${OUTGOING_ICON}</div>
+          <div class="recent-meta">
+            <div class="recent-name">Alex</div>
+            <div class="recent-sub">${call.kind === "facetime" ? "FaceTime Video" : "mobile"}</div>
+          </div>
+          <div class="recent-time">${recentTimeLabel(call.started_at)}</div>
+          <button class="info-btn" aria-label="Call details">${INFO_ICON}</button>`;
+        // like iOS: tapping the row redials, the (i) opens details
+        row.addEventListener("click", () => dialFromUi(call.kind === "facetime"));
+        row.querySelector(".info-btn").addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          openDetail(call.id);
+        });
+        return row;
+      }));
+    }
+
+    let detailCallId = null;
+    async function openDetail(id) {
+      detailCallId = id;
+      showScreen("detail");
+      const tEl = document.getElementById("detail-transcript");
+      tEl.innerHTML = '<div class="transcript-empty">Loading…</div>';
+      try {
+        const { call, messages } = await api(`/api/calls/${id}`);
+        document.getElementById("detail-date").textContent = dayHeading(call.started_at);
+        document.getElementById("detail-time").textContent =
+          new Date(call.started_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+        document.getElementById("detail-kind").textContent =
+          call.kind === "facetime" ? "Outgoing FaceTime Video" : "Outgoing Call";
+        document.getElementById("detail-duration").textContent = durationText(call);
+        if (!messages.length) {
+          tEl.innerHTML = '<div class="transcript-empty">No transcript for this call.</div>';
+        } else {
+          tEl.replaceChildren(...messages.map((m) => {
+            const line = document.createElement("div");
+            const who = document.createElement("span");
+            who.className = "who";
+            who.textContent = m.role === "assistant" ? "Alex" : "You";
+            const said = document.createElement("div");
+            said.className = "said";
+            said.textContent = m.text;
+            line.append(who, said);
+            return line;
+          }));
+        }
+      } catch (e) {
+        if (e.status === 401) return showSignIn();
+        tEl.innerHTML = '<div class="transcript-empty">Couldn\'t load this call.</div>';
+      }
+    }
+    document.getElementById("detail-back").addEventListener("click", () => {
+      showScreen("recents");
+      loadRecents();
+    });
+    document.getElementById("detail-call").addEventListener("click", () => dialFromUi(false));
+    document.getElementById("detail-facetime").addEventListener("click", () => dialFromUi(true));
+    document.getElementById("detail-delete").addEventListener("click", async () => {
+      if (!detailCallId || !confirm("Delete this call and its transcript?")) return;
+      await api(`/api/calls/${detailCallId}`, { method: "DELETE" }).catch(() => {});
+      showScreen("recents");
+      loadRecents();
+    });
+
+    for (const t of tabBar.querySelectorAll("[data-tab]")) {
+      t.addEventListener("click", () => {
+        showScreen(t.dataset.tab);
+        if (t.dataset.tab === "recents") loadRecents();
+      });
+    }
+
+    // Must run synchronously inside the tap: the FaceTime path creates its
+    // AudioContext and camera request here (iOS requires a user gesture).
+    function dialFromUi(video) {
+      if (video) {
+        lipSyncCtx ??= new (window.AudioContext || window.webkitAudioContext)();
+        lipSyncCtx.resume();
+        startCall({ video: true });
+        startSelfView();
+      } else {
+        startCall();
+      }
+    }
+
+    (async function initAuth() {
+      try {
+        const cfg = await (await fetch("/api/config", { credentials: "same-origin" })).json();
+        authEnabled = Boolean(cfg.authEnabled);
+        googleClientId = cfg.googleClientId;
+      } catch {
+        authEnabled = false; // local dev server: no /api
+      }
+      if (!authEnabled) return;
+      try {
+        const { user } = await api("/api/me");
+        signedIn(user);
+      } catch {
+        showSignIn();
+      }
+    })();
+
+    document.getElementById("call-btn").addEventListener("click", () => startCall());
+    document.getElementById("facetime-btn").addEventListener("click", () => dialFromUi(true));
 
     camBtn.addEventListener("click", () => {
       if (!selfStream) return;

@@ -8,8 +8,20 @@
   // non-secret agent config, forwarded into the container as env vars
   "vars": {
     "LLM_MODEL": "qwen/qwen3.5-122b-a10b",
-    "AGENT_NAME": "Alex"
+    "AGENT_NAME": "Alex",
+    // Google OAuth web client id (public). Empty = sign-in disabled, calls
+    // stay anonymous and there is no call log.
+    "GOOGLE_CLIENT_ID": ""
   },
+  // users, calls and call transcripts (Recents)
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "preprod-voice-agent-db",
+      "database_id": "dcf8e9e0-58ea-4922-8a99-bfd85c35b61f",
+      "migrations_dir": "migrations"
+    }
+  ],
   "assets": {
     "directory": "./static",
     "binding": "ASSETS",
