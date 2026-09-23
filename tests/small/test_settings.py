@@ -103,6 +103,22 @@ def test_settings_stt_is_verbatim_by_default():
     assert settings.stt_no_verbatim is False
     assert settings.stt_filter_background_audio is True
     assert settings.stt_keyterms == ()
+    assert settings.stt_commit_vad is False
+    assert settings.stt_vad_silence_secs == 0.6
+
+
+def test_settings_vad_tuned_for_hesitant_speech():
+    """0.2s stop / 0.6 volume floor cut off hesitant and soft speakers."""
+    settings = make_settings()
+    assert settings.vad_stop_secs == 0.5
+    assert settings.vad_min_volume == 0.45
+
+
+def test_settings_rejects_out_of_range_stt_vad_silence():
+    with pytest.raises(ValidationError):
+        make_settings(stt_vad_silence_secs=0.1)
+    with pytest.raises(ValidationError):
+        make_settings(stt_vad_silence_secs=5.0)
 
 
 def test_settings_validates_llm_temperature_range():

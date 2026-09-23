@@ -13,7 +13,10 @@ from pipecat.processors.aggregators.llm_response_universal import (
     LLMContextAggregatorPair,
     LLMUserAggregatorParams,
 )
-from pipecat.services.elevenlabs.stt import ElevenLabsRealtimeSTTService
+from pipecat.services.elevenlabs.stt import (
+    CommitStrategy,
+    ElevenLabsRealtimeSTTService,
+)
 from pipecat.services.elevenlabs.tts import ElevenLabsHttpTTSService
 from pipecat.transports.base_transport import BaseTransport
 
@@ -21,6 +24,7 @@ from agent.core.settings import AgentSettings
 from agent.llm import OpenRouterLLMServiceNoThinking
 from agent.processors.context_window import ContextWindowTrimmer
 from agent.processors.metrics import LatencyMonitor
+from agent.processors.transcripts import TranscriptLogger
 from agent.processors.voice_tags import VoiceTagFilter
 from agent.prompts import build_system_prompt
 
@@ -60,15 +64,24 @@ def build_pipeline(
         logger.debug("initializing STT service")
         stt = ElevenLabsRealtimeSTTService(
             api_key=settings.elevenlabs_api_key,
+            commit_strategy=(
+                CommitStrategy.VAD if settings.stt_commit_vad else CommitStrategy.MANUAL
+            ),
             settings=ElevenLabsRealtimeSTTService.Settings(
                 filter_background_audio=settings.stt_filter_background_audio,
                 no_verbatim=settings.stt_no_verbatim,
                 # bias transcription toward the tutor's name plus any extra
                 # terms configured in .env
                 keyterms=[settings.agent_name, *settings.stt_keyterms],
+                vad_silence_threshold_secs=(
+                    settings.stt_vad_silence_secs if settings.stt_commit_vad else None
+                ),
                 language="en",
             ),
         )
+        # transcript logging sits between stt and the context aggregator so
+        # the logs record exactly what the llm will see
+        transcript_logger = TranscriptLogger()
 
         logger.debug("initializing LLM service with model={}", settings.llm_model)
         llm = OpenRouterLLMServiceNoThinking(
@@ -121,6 +134,7 @@ def build_pipeline(
             [
                 transport.input(),
                 stt,
+                transcript_logger,
                 user_aggregator,
                 context_trimmer,
                 llm,

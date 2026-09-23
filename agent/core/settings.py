@@ -65,14 +65,21 @@ class AgentSettings(BaseSettings):
     # transcription bias terms (scribe v2 realtime supports up to 50); agent.py
     # seeds this with the agent name so it transcribes reliably
     stt_keyterms: tuple[str, ...] = ()
+    # false = manual commits (pipecat's silero vad decides utterance ends);
+    # true = elevenlabs' own vad segments speech (vad_silence_secs below).
+    # experiment flag: compare live before switching.
+    stt_commit_vad: bool = False
+    stt_vad_silence_secs: float = 0.6
 
     # vad (silero; pipecat defaults). the webrtc client's mic capture runs with
     # echo cancellation enabled, so the bot's own tts never reaches vad/stt and
-    # no server-side echo suppression is needed.
+    # no server-side echo suppression is needed. stop/min_volume tuned for
+    # hesitant learners: a 0.2s silence cut utterances off mid-sentence and a
+    # 0.6 volume floor dropped soft speech entirely (both seen live).
     vad_confidence: float = 0.7
     vad_start_secs: float = 0.2
-    vad_stop_secs: float = 0.2
-    vad_min_volume: float = 0.6
+    vad_stop_secs: float = 0.5
+    vad_min_volume: float = 0.45
 
     # conversation history is capped to the last N user/assistant turns (plus
     # the system prompt) so long sessions don't grow the llm context forever.
@@ -217,6 +224,13 @@ class AgentSettings(BaseSettings):
     def validate_vad_secs(cls, v: float) -> float:
         if v < 0.0:
             raise ValueError("vad_start_secs and vad_stop_secs must be >= 0.0")
+        return v
+
+    @field_validator("stt_vad_silence_secs")
+    @classmethod
+    def validate_stt_vad_silence_secs(cls, v: float) -> float:
+        if not 0.3 <= v <= 3.0:
+            raise ValueError("stt_vad_silence_secs must be between 0.3 and 3.0")
         return v
 
     @field_validator("vad_min_volume")
