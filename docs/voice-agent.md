@@ -32,7 +32,7 @@ browser mic (webrtc, echo-cancelled) ─▶ ElevenLabs realtime STT (scribe_v2_r
         LLM context (user + assistant turns) ─▶ ContextWindowTrimmer (caps history)
                       │
                       ▼
-        OpenRouter LLM  qwen/qwen3.5-27b  (streaming, reasoning off requested)
+        OpenRouter LLM  qwen/qwen3.5-122b-a10b  (streaming, reasoning off requested)
                       │  reply text, tagged with emotion only if the tts model supports it
                       ▼
         VoiceTagFilter ─▶ ElevenLabs HTTP TTS (eleven_flash_v2_5 by default, streaming)

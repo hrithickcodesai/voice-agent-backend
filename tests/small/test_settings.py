@@ -100,6 +100,31 @@ def test_settings_validates_vad_confidence_range():
         )
 
 
+def test_settings_validates_llm_top_p_range():
+    """llm_top_p must be between 0.0 and 1.0."""
+    with pytest.raises(ValidationError):
+        AgentSettings(
+            elevenlabs_api_key="test",
+            elevenlabs_voice_id="test",
+            openrouter_api_key="test",
+            llm_top_p=0.0,
+        )
+    with pytest.raises(ValidationError):
+        AgentSettings(
+            elevenlabs_api_key="test",
+            elevenlabs_voice_id="test",
+            openrouter_api_key="test",
+            llm_top_p=1.5,
+        )
+    settings = AgentSettings(
+        elevenlabs_api_key="test",
+        elevenlabs_voice_id="test",
+        openrouter_api_key="test",
+        llm_top_p=0.95,
+    )
+    assert settings.llm_top_p == 0.95
+
+
 def test_settings_has_default_voice_tags():
     """voice_tags should have sensible defaults."""
     settings = AgentSettings(
@@ -119,7 +144,7 @@ def test_settings_has_default_llm_model():
         elevenlabs_voice_id="test",
         openrouter_api_key="test",
     )
-    assert settings.llm_model == "qwen/qwen3.5-35b-a3b"
+    assert settings.llm_model == "qwen/qwen3.5-122b-a10b"
 
 
 def test_settings_flash_tts_model_does_not_support_emotion_tags():

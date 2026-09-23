@@ -73,6 +73,7 @@ def build_pipeline(
             settings=OpenRouterLLMServiceNoThinking.Settings(
                 model=settings.llm_model,
                 temperature=settings.llm_temperature,
+                top_p=settings.llm_top_p,
                 max_tokens=settings.llm_max_tokens,
                 system_instruction=build_system_prompt(settings),
             ),

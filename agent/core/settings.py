@@ -15,8 +15,11 @@ class AgentSettings(BaseSettings):
     openrouter_api_key: str
 
     # llm (openrouter, openai-compatible)
-    llm_model: str = "qwen/qwen3.5-35b-a3b"
-    llm_temperature: float = 0.7
+    llm_model: str = "cognitivecomputations/dolphin-mistral-24b-venice-edition"
+    # temperature tuned above default for livelier replies, but not so high that
+    # correction quality degrades; top_p keeps the sampled set coherent
+    llm_temperature: float = 0.8
+    llm_top_p: float = 0.95
     llm_max_tokens: int = 512
 
     # tts (elevenlabs http convert). eleven_v3 is the only model that understands
@@ -159,6 +162,13 @@ class AgentSettings(BaseSettings):
     def validate_llm_max_tokens(cls, v: int) -> int:
         if v < 1 or v > 4096:
             raise ValueError("llm_max_tokens must be between 1 and 4096")
+        return v
+
+    @field_validator("llm_top_p")
+    @classmethod
+    def validate_llm_top_p(cls, v: float) -> float:
+        if not 0.0 < v <= 1.0:
+            raise ValueError("llm_top_p must be between 0.0 and 1.0")
         return v
 
     @field_validator("vad_confidence")
