@@ -8,7 +8,10 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 
 COPY agent ./agent
-COPY static ./static
+# static/ (the UI) is deliberately not copied: in Cloudflare the Worker
+# serves it, and keeping it out of the image means UI-only deploys don't
+# roll out a new container version (which replaces running containers and
+# drops live calls).
 COPY main.py ./
 
 EXPOSE 7860

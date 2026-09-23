@@ -238,6 +238,42 @@
     #screen-calling.video .call-avatar-wrap { display: none; }
     #screen-calling > :not(video) { position: relative; z-index: 1; }
     .cam-off { display: none !important; }
+
+    /* Live Captions, styled after iOS: frosted dark panel, speaker label,
+       newest words at the bottom, older lines scrolling off the top */
+    .captions {
+      width: 100%;
+      max-width: 360px;
+      max-height: 7.6em;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      gap: 0.45rem;
+      padding: 0.7rem 0.9rem;
+      border-radius: 1.1rem;
+      background: rgba(28, 28, 30, 0.72);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      text-align: left;
+      font-size: 0.98rem;
+      line-height: 1.3;
+      -webkit-mask-image: linear-gradient(transparent, #000 1.4em);
+      mask-image: linear-gradient(transparent, #000 1.4em);
+    }
+    .captions:empty { visibility: hidden; }
+    .caption-who { display: block; font-size: 0.75rem; font-weight: 600; color: #8e8e93; margin-bottom: 0.1rem; }
+    .caption-text { color: #fff; }
+    .caption-line.interim .caption-text { color: #d1d1d6; }
+    #screen-connected .captions { margin: 0 auto; }
+    #screen-facetime .captions {
+      position: absolute;
+      top: 4.4rem;
+      left: 50%;
+      transform: translateX(-50%);
+      width: calc(100% - 28px);
+      z-index: 4;
+    }
     .ft-top {
       position: absolute;
       top: 1rem;
@@ -433,6 +469,8 @@
         <div class="call-status" id="call-timer">00:00</div>
       </div>
 
+      <div class="captions" aria-live="polite"></div>
+
       <div>
         <div class="control-grid">
           <button class="ctrl-btn" id="mute-btn">
@@ -506,6 +544,7 @@
         <div class="ft-name">Alex</div>
         <div class="ft-timer" id="ft-timer">00:00</div>
       </div>
+      <div class="captions" aria-live="polite"></div>
       <div class="ft-controls">
         <button class="ctrl-btn" id="ft-speaker-btn" aria-label="Speaker">
           <span class="ctrl-circle">
@@ -697,6 +736,80 @@
         for (const v of selfViews) v.classList.add("cam-off");
       }
     }
+    // Live Captions. Alex's words arrive one by one in sync with the audio
+    // (bot-tts-text, from ElevenLabs word timestamps); yours arrive as
+    // interim transcripts that are then finalised (user-transcription).
+    const captionEls = document.querySelectorAll(".captions");
+    let captions = []; // { who, text, interim }
+    function renderCaptions() {
+      const html = captions.slice(-3).map((c) => {
+        const who = document.createElement("span");
+        who.className = "caption-who";
+        who.textContent = c.who;
+        const text = document.createElement("span");
+        text.className = "caption-text";
+        text.textContent = c.text + (c.interim ? " " + c.interim : "");
+        const line = document.createElement("div");
+        line.className = "caption-line" + (c.interim ? " interim" : "");
+        line.append(who, text);
+        return line;
+      });
+      for (const el of captionEls) el.replaceChildren(...html.map((n) => n.cloneNode(true)));
+    }
+    function currentLine(who) {
+      let last = captions[captions.length - 1];
+      if (!last || last.who !== who) {
+        last = { who, text: "", interim: "" };
+        captions.push(last);
+        if (captions.length > 20) captions.shift();
+      }
+      return last;
+    }
+    function captionBotWord(word) {
+      const w = (word || "").trim();
+      if (!w) return;
+      const line = currentLine("Alex");
+      line.text += (line.text && !/^[,.!?;:]/.test(w) ? " " : "") + w;
+      renderCaptions();
+    }
+    function captionUser({ text, final }) {
+      const t = (text || "").trim();
+      if (!t) return;
+      const line = currentLine("You");
+      if (final) {
+        line.text += (line.text ? " " : "") + t;
+        line.interim = "";
+      } else {
+        line.interim = t;
+      }
+      renderCaptions();
+    }
+    function resetCaptions() {
+      captions = [];
+      renderCaptions();
+    }
+
+    // Keep the screen awake for the whole call. On iPhone the screen
+    // otherwise auto-locks mid-call (nobody touches it while talking), iOS
+    // suspends the page, and the WebRTC connection dies - the call drops.
+    let wakeLock = null;
+    async function acquireWakeLock() {
+      if (!callActive || !("wakeLock" in navigator) || document.visibilityState !== "visible") return;
+      try {
+        wakeLock = await navigator.wakeLock.request("screen");
+      } catch (e) {
+        console.warn("wake lock unavailable", e);
+      }
+    }
+    function releaseWakeLock() {
+      wakeLock?.release().catch(() => {});
+      wakeLock = null;
+    }
+    // the lock is dropped whenever the page is hidden; take it back on return
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") acquireWakeLock();
+    });
+
     function stopSelfView() {
       selfStream?.getTracks().forEach((t) => t.stop());
       selfStream = null;
@@ -722,6 +835,8 @@
       talkingHead?.stop();
       talkingHead = null;
       stopSelfView();
+      releaseWakeLock();
+      resetCaptions();
       screens.calling.classList.remove("video");
       if (client) {
         try {
@@ -754,6 +869,7 @@
       callStatusEl.textContent = video ? "FaceTime…" : "calling…";
       screens.calling.classList.toggle("video", video);
       showScreen("calling");
+      acquireWakeLock();
       startRingback();
       // fetch the avatar runtime + model while it rings (~6MB, a few seconds)
       if (video) loadAvatar();
@@ -780,6 +896,8 @@
             showScreen(isVideoCall ? "facetime" : "connected");
             startTimer();
           },
+          onBotTtsText: (data) => captionBotWord(data?.text),
+          onUserTranscript: (data) => captionUser(data || {}),
           onDisconnected: () => {
             endCall("Call Ended");
           },

@@ -11,11 +11,14 @@ interface Env {
   AGENT_NAME: string;
 }
 
+// Hard cap on one call's container, in case the bot never exits.
+const MAX_CALL_MS = 60 * 60 * 1000;
+
 export class VoiceAgentContainer extends Container<Env> {
   defaultPort = 7860;
-  // The bot exits the container itself as soon as the call ends
-  // (EXIT_AFTER_CALL); this is only a fallback for a /start that never
-  // turns into a connected call.
+  // Idle timeout for a /start that never turns into a call. Once a call is
+  // live, its audio flows over WebRTC and never passes through this Durable
+  // Object, so "idle" says nothing about the call - see onActivityExpired.
   sleepAfter = "2m";
   enableInternet = true;
   pingEndpoint = "/status";
@@ -29,6 +32,30 @@ export class VoiceAgentContainer extends Container<Env> {
     AGENT_NAME: this.env.AGENT_NAME,
     EXIT_AFTER_CALL: "true",
   };
+
+  override async fetch(request: Request): Promise<Response> {
+    if (request.method === "POST" && new URL(request.url).pathname.endsWith("/api/offer")) {
+      await this.ctx.storage.put("callStartedAt", Date.now());
+    }
+    return super.fetch(request);
+  }
+
+  // The default stops the container once sleepAfter passes without a request
+  // - which cut every call off ~2 minutes in, mid-conversation. After the
+  // WebRTC offer, the bot owns the lifecycle instead: it exits the container
+  // itself when the caller hangs up or drops (EXIT_AFTER_CALL).
+  override async onActivityExpired(): Promise<void> {
+    const startedAt = await this.ctx.storage.get<number>("callStartedAt");
+    if (startedAt && Date.now() - startedAt < MAX_CALL_MS) {
+      this.renewActivityTimeout();
+      return;
+    }
+    await super.onActivityExpired();
+  }
+
+  override async onStop(): Promise<void> {
+    await this.ctx.storage.delete("callStartedAt");
+  }
 }
 
 const CALL_COOKIE = "cf_call_session";
@@ -52,7 +79,15 @@ function json(status: number, body: object, headers: HeadersInit = {}): Response
 async function forwardToContainer(request: Request, env: Env, callId: string): Promise<Response> {
   const container = env.VOICE_AGENT_CONTAINER.getByName(callId);
   try {
-    await container.startAndWaitForPorts();
+    // Cloudflare keeps a finite pool of prewarmed instances per location;
+    // when simultaneous calls drain the nearby one, starts fail with "no
+    // container instance that can be provided" until more are prepped a few
+    // seconds later. The library's default 8s gives up too early and turned
+    // a second concurrent caller into "Line Busy" - keep trying while the
+    // phone rings instead.
+    await container.startAndWaitForPorts({
+      cancellationOptions: { instanceGetTimeoutMS: 30_000, portReadyTimeoutMS: 30_000 },
+    });
     return await container.fetch(request);
   } catch (err) {
     // Most commonly max_instances reached (every line busy) or a cold

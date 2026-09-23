@@ -1,3 +1,4 @@
+import os
 import sys
 
 from loguru import logger
@@ -42,8 +43,10 @@ def main() -> None:
 
     # the runner's own frontend lives at /client; ours is a minimal page at
     # /ui built for this english-tutor use case (live transcript, one button).
-    app.mount("/ui", StaticFiles(directory="static", html=True), name="ui")
-    logger.info("minimalist ui available at /ui")
+    # absent in the cloudflare container image, where the worker serves the ui
+    if os.path.isdir("static"):
+        app.mount("/ui", StaticFiles(directory="static", html=True), name="ui")
+        logger.info("minimalist ui available at /ui")
 
     run_server()
 
