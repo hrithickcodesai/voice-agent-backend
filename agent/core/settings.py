@@ -24,6 +24,11 @@ class AgentSettings(BaseSettings):
     fish_audio_api_key: str | None = None
     fish_audio_voice_id: str | None = None
 
+    # when true the whole server process shuts down once a call ends. set in
+    # the cloudflare container (one container per call) so it's released
+    # immediately instead of idling until sleepAfter; off for local dev.
+    exit_after_call: bool = False
+
     @model_validator(mode="after")
     def validate_tts_provider_credentials(self) -> "AgentSettings":
         if self.tts_provider == "elevenlabs":

@@ -483,6 +483,27 @@
       }
     }
 
+    // North-American busy signal (480Hz + 620Hz, 0.5s on / 0.5s off), played
+    // like a carrier does when every line (container) is taken.
+    async function playBusyTone(cycles = 4) {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const gain = ctx.createGain();
+      gain.gain.value = 0.06;
+      gain.connect(ctx.destination);
+      for (let i = 0; i < cycles; i++) {
+        const start = ctx.currentTime + i;
+        for (const freq of [480, 620]) {
+          const osc = ctx.createOscillator();
+          osc.frequency.value = freq;
+          osc.connect(gain);
+          osc.start(start);
+          osc.stop(start + 0.5);
+        }
+      }
+      await delay(cycles * 1000);
+      ctx.close();
+    }
+
     let client = null;
     let remoteAudioEl = null;
     let speakerOn = false;
@@ -511,7 +532,7 @@
       timerInterval = null;
     }
 
-    async function endCall(reason) {
+    async function endCall(reason, { busy = false } = {}) {
       if (!callActive) return;
       callActive = false;
       stopRingback();
@@ -529,7 +550,11 @@
       }
       screens.ended.querySelector(".call-status").textContent = reason || "Call Ended";
       showScreen("ended");
-      await delay(1200);
+      if (busy) {
+        await playBusyTone();
+      } else {
+        await delay(1200);
+      }
       showScreen("contacts");
     }
 
@@ -571,7 +596,13 @@
           },
           onError: (error) => {
             console.error(error);
-            endCall("Call Failed");
+            // the worker answers /start with {"info": "line_busy"} when no
+            // container is free, which surfaces here as the error message.
+            if (error?.data?.message === "line_busy") {
+              endCall("Line Busy", { busy: true });
+            } else {
+              endCall("Call Failed");
+            }
           },
         },
       });

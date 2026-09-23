@@ -27,5 +27,5 @@ jobs:
 
       - name: Smoke test
         run: |
-          curl -sf --retry 5 --retry-delay 5 --retry-connrefused \
-            https://preprod-voice-agent.cwz.workers.dev/status
+          curl -sf -o /dev/null --retry 5 --retry-delay 5 --retry-connrefused \
+            https://preprod-voice-agent.cwz.workers.dev/ui/

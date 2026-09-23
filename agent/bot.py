@@ -1,3 +1,6 @@
+import os
+import signal
+
 import aiohttp
 from loguru import logger
 from pipecat.frames.frames import LLMRunFrame
@@ -30,6 +33,14 @@ async def bot(runner_args: RunnerArguments) -> None:
     try:
         async with aiohttp.ClientSession() as http_session:
             worker, context = build_pipeline(settings, transport, http_session)
+
+            # hang-up, closed tab, or dropped network all end the call here -
+            # without this the pipeline keeps running with nobody on the line.
+            @transport.event_handler("on_client_disconnected")
+            async def on_client_disconnected(transport, client):
+                logger.info("client disconnected, session_id={}", runner_args.session_id)
+                await worker.cancel(reason="client disconnected")
+
             context.add_message({"role": "user", "content": "Start the session."})
             await worker.queue_frames([LLMRunFrame()])
 
@@ -46,3 +57,9 @@ async def bot(runner_args: RunnerArguments) -> None:
             "bot session error, session_id={}: {}", runner_args.session_id, str(e)
         )
         raise
+    finally:
+        if settings.exit_after_call:
+            # sigterm lets uvicorn shut down gracefully; the process exiting
+            # stops the container, freeing it for the next call right away.
+            logger.info("call over, shutting down container")
+            os.kill(os.getpid(), signal.SIGTERM)
