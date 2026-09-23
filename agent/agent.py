@@ -73,6 +73,7 @@ def build_pipeline(
         logger.debug("initializing LLM service with model={}", settings.llm_model)
         llm = OpenRouterLLMServiceNoThinking(
             api_key=settings.openrouter_api_key,
+            provider_order=settings.llm_provider_order,
             settings=OpenRouterLLMServiceNoThinking.Settings(
                 model=settings.llm_model,
                 temperature=settings.llm_temperature,

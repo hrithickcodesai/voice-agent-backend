@@ -36,23 +36,35 @@ class AgentSettings(BaseSettings):
     # read the brackets aloud) but ttfb drops to ~0.2-0.4s and they accept
     # optimize_streaming_latency. see AgentSettings.uses_emotion_tags.
     tts_model: str = "eleven_flash_v2_5"
-    # lower stability = more expressive delivery
-    tts_stability: float = 0.3
-    # style (0-1) amplifies emotional delivery; 0 disables, 1 is max expression
-    tts_style: float = 0.4
+    # stability is the main consistency dial: 0 = creative (expressive but
+    # delivery drifts between sentences - confirmed in live testing), 1 =
+    # robust (flat but even). 0.55 sits in the natural band so every sentence
+    # sounds like the same person.
+    tts_stability: float = 0.55
+    # style exaggerates the voice's inherent expressiveness; high style on top
+    # of low stability is what made delivery swing wildly between sentences.
+    tts_style: float = 0.2
     # speech speed multiplier (0.7-1.2 per elevenlabs v3 docs)
     tts_speed: float = 1.0
     # 0-4, higher = lower latency at some pronunciation-accuracy cost. only
     # applied for models other than eleven_v3 (eleven_v3 rejects this param
-    # outright with a 400).
-    tts_optimize_streaming_latency: int = 3
+    # outright with a 400). 2 instead of 3: for a tutor voice, pronouncing
+    # learner-facing words correctly matters more than the last 100ms.
+    tts_optimize_streaming_latency: int = 2
 
     # audio
     sample_rate: int = 16000
 
-    # stt (elevenlabs realtime)
+    # stt (elevenlabs realtime). verbatim is the point: fillers, false starts,
+    # and trailed-off sentences are the teaching signals - no_verbatim=true
+    # makes elevenlabs delete them before the llm ever sees them.
+    stt_no_verbatim: bool = False
+    # filters out background/non-speech audio before transcription; keeps noise
+    # from garbling words without rewriting the learner's speech
     stt_filter_background_audio: bool = True
-    stt_no_verbatim: bool = True
+    # transcription bias terms (scribe v2 realtime supports up to 50); agent.py
+    # seeds this with the agent name so it transcribes reliably
+    stt_keyterms: tuple[str, ...] = ()
 
     # vad (silero; pipecat defaults). the webrtc client's mic capture runs with
     # echo cancellation enabled, so the bot's own tts never reaches vad/stt and
