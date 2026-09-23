@@ -1,0 +1,18 @@
+[project]
+name = "voice-agent-backend"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "elevenlabs>=2.68.0",
+    "numpy>=2.5.3",
+    "python-dotenv>=1.2.3",
+    "sounddevice>=0.5.6",
+    "websockets>=17.1",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.16.8",
+]
