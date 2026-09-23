@@ -119,8 +119,20 @@ export default {
     // container via this cookie instead. The bot shuts the container down
     // when the call ends, and a redial never reuses it.
     if (request.method === "POST" && url.pathname === "/start") {
-      const callId = crypto.randomUUID();
-      const response = await forwardToContainer(request, env, callId);
+      // Right after other calls end, Cloudflare can hand a new call an
+      // instance that's still being torn down ("Container suddenly
+      // disconnected, try again"). /start has no state yet, so retry it on
+      // a fresh container rather than failing the call.
+      const body = await request.arrayBuffer();
+      let callId = "";
+      let response: Response | null = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        callId = crypto.randomUUID();
+        response = await forwardToContainer(new Request(request, { body }), env, callId);
+        if (response.status < 500 || response.status === 503) break;
+        console.warn("start failed, retrying on a fresh container", response.status, await response.text());
+      }
+      response = response!;
       const withCookie = new Response(response.body, response);
       withCookie.headers.append(
         "Set-Cookie",

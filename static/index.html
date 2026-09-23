@@ -874,47 +874,106 @@
       // fetch the avatar runtime + model while it rings (~6MB, a few seconds)
       if (video) loadAvatar();
 
+      // Ring for at least ~2 cycles even on a fast connection, so the call
+      // always feels like a real phone call rather than an instant pickup.
+      const MIN_RING_MS = 3200;
+      const minRing = delay(MIN_RING_MS);
+
+      // Cloudflare occasionally hands a new call a container that dies right
+      // after answering (typically just as other calls end), which shows up
+      // as a failed offer or a connection stuck "connecting". Redial silently
+      // while it keeps ringing instead of failing the call.
+      const MAX_ATTEMPTS = 3;
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS && callActive; attempt++) {
+        try {
+          await Promise.all([dial(), minRing]);
+          return;
+        } catch (error) {
+          if (!callActive) return; // hung up, or already ended as Line Busy
+          console.warn(`dial attempt ${attempt} failed`, error);
+          await dropClient();
+        }
+      }
+      endCall("Call Failed");
+    }
+
+    // Tear down a failed attempt without ending the call.
+    async function dropClient() {
+      const old = client;
+      client = null; // stale callbacks check `c === client` and bail out
+      talkingHead?.stop();
+      talkingHead = null;
+      remoteAudioEl?.remove();
+      remoteAudioEl = null;
+      try {
+        await old?.disconnect();
+      } catch (_) {
+        /* already gone */
+      }
+    }
+
+    // One attempt at connecting. Resolves once connected; rejects on failure
+    // or if WebRTC doesn't come up within STALL_MS of /start returning
+    // (/start itself may legitimately wait ~30s for a container).
+    function dial() {
+      const STALL_MS = 15000;
+      let stallTimer = null;
+      let rejectStall;
+      const stalled = new Promise((_, reject) => (rejectStall = reject));
+      let transportConnected = false;
+
       // Matches pipecat's own prebuilt client config: wait for full ICE
       // gathering (including TURN relay candidates) before sending the
       // offer, instead of relying on trickle ICE - more reliable through
       // a TURN relay.
       const transport = new SmallWebRTCTransport({ waitForICEGathering: true });
-      client = new PipecatClient({
+      const c = new PipecatClient({
         transport,
         enableMic: true,
         enableCam: false,
         callbacks: {
+          onBotStarted: () => {
+            stallTimer = setTimeout(() => rejectStall(new Error("connection stalled")), STALL_MS);
+          },
+          onConnected: () => {
+            transportConnected = true;
+            clearTimeout(stallTimer);
+          },
           // onBotReady only means the pipeline is wired up, not that the
           // bot has actually said anything yet - cold start + LLM + TTS
           // can take several seconds beyond that. Keep ringing until the
           // bot actually starts speaking, so the ring covers that gap
           // instead of dropping into a silent "connected" screen.
           onBotStartedSpeaking: () => {
-            if (!callActive || connectedScreenShown) return;
+            if (c !== client || !callActive || connectedScreenShown) return;
             connectedScreenShown = true;
             stopRingback();
             showScreen(isVideoCall ? "facetime" : "connected");
             startTimer();
           },
-          onBotTtsText: (data) => captionBotWord(data?.text),
-          onUserTranscript: (data) => captionUser(data || {}),
+          onBotTtsText: (data) => c === client && captionBotWord(data?.text),
+          onUserTranscript: (data) => c === client && captionUser(data || {}),
           onDisconnected: () => {
-            endCall("Call Ended");
+            // before the connection is up, the redial loop handles failure
+            if (c === client && transportConnected) endCall("Call Ended");
           },
           onError: (error) => {
+            if (c !== client) return;
             console.error(error);
             // the worker answers /start with {"info": "line_busy"} when no
             // container is free, which surfaces here as the error message.
             if (error?.data?.message === "line_busy") {
               endCall("Line Busy", { busy: true });
-            } else {
+            } else if (transportConnected) {
               endCall("Call Failed");
             }
           },
         },
       });
+      client = c;
 
-      client.on("trackStarted", (track, participant) => {
+      c.on("trackStarted", (track, participant) => {
+        if (c !== client) return;
         if (!participant?.local && track.kind === "audio") {
           remoteAudioEl = document.createElement("audio");
           remoteAudioEl.className = "hidden-audio";
@@ -926,21 +985,11 @@
         }
       });
 
-      // Ring for at least ~2 cycles even on a fast connection, so the call
-      // always feels like a real phone call rather than an instant pickup.
-      const MIN_RING_MS = 3200;
-      try {
-        await Promise.all([
-          client.startBotAndConnect({
-            endpoint: "/start",
-            requestData: { transport: "webrtc", enableDefaultIceServers: true },
-          }),
-          delay(MIN_RING_MS),
-        ]);
-      } catch (error) {
-        console.error(error);
-        endCall("Call Failed");
-      }
+      const connected = c.startBotAndConnect({
+        endpoint: "/start",
+        requestData: { transport: "webrtc", enableDefaultIceServers: true },
+      });
+      return Promise.race([connected, stalled]).finally(() => clearTimeout(stallTimer));
     }
 
     // The bot's audio track arrives while it's still ringing, so the avatar
