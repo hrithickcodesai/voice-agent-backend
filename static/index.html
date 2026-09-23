@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>English Tutor</title>
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      font-family: system-ui, sans-serif;
+      max-width: 640px;
+      margin: 2rem auto;
+      padding: 0 1rem;
+      background: #111;
+      color: #eee;
+    }
+    h1 { font-size: 1.25rem; }
+    #status {
+      font-size: 0.9rem;
+      color: #9ad;
+      margin-bottom: 1rem;
+      min-height: 1.2em;
+    }
+    #connect-btn {
+      padding: 0.6rem 1.4rem;
+      font-size: 1rem;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      background: #2e7d32;
+      color: white;
+    }
+    #connect-btn.disconnect { background: #b3261e; }
+    #transcript {
+      margin-top: 1.5rem;
+      border-top: 1px solid #333;
+      padding-top: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      max-height: 60vh;
+      overflow-y: auto;
+    }
+    .msg { padding: 0.5rem 0.75rem; border-radius: 8px; max-width: 85%; }
+    .msg.user { align-self: flex-end; background: #294a63; }
+    .msg.bot { align-self: flex-start; background: #2a2a2a; }
+    .msg .role { font-size: 0.7rem; opacity: 0.6; margin-bottom: 0.15rem; }
+    .placeholder { opacity: 0.5; font-style: italic; }
+  </style>
+</head>
+<body>
+  <h1>English Tutor</h1>
+  <div id="status">Not connected.</div>
+  <button id="connect-btn">Connect</button>
+  <div id="transcript">
+    <div class="placeholder">Connect and start talking - your conversation will show up here.</div>
+  </div>
+
+  <script type="module">
+    import { PipecatClient } from "https://esm.sh/@pipecat-ai/client-js@1.13.1";
+    import { SmallWebRTCTransport } from "https://esm.sh/@pipecat-ai/small-webrtc-transport@1.10.8";
+
+    const statusEl = document.getElementById("status");
+    const connectBtn = document.getElementById("connect-btn");
+    const transcriptEl = document.getElementById("transcript");
+
+    let client = null;
+    let connected = false;
+
+    function setStatus(text) {
+      statusEl.textContent = text;
+    }
+
+    function addMessage(text, role) {
+      const placeholder = transcriptEl.querySelector(".placeholder");
+      if (placeholder) placeholder.remove();
+
+      const wrapper = document.createElement("div");
+      wrapper.className = `msg ${role}`;
+
+      const roleLabel = document.createElement("div");
+      roleLabel.className = "role";
+      roleLabel.textContent = role === "user" ? "You" : "Tutor";
+
+      const body = document.createElement("div");
+      body.textContent = text;
+
+      wrapper.appendChild(roleLabel);
+      wrapper.appendChild(body);
+      transcriptEl.appendChild(wrapper);
+      transcriptEl.scrollTop = transcriptEl.scrollHeight;
+    }
+
+    async function connect() {
+      setStatus("Connecting...");
+      const transport = new SmallWebRTCTransport();
+
+      client = new PipecatClient({
+        transport,
+        enableMic: true,
+        enableCam: false,
+        callbacks: {
+          onConnected: () => {
+            connected = true;
+            connectBtn.textContent = "Disconnect";
+            connectBtn.classList.add("disconnect");
+            setStatus("Connected.");
+          },
+          onDisconnected: () => {
+            connected = false;
+            connectBtn.textContent = "Connect";
+            connectBtn.classList.remove("disconnect");
+            setStatus("Not connected.");
+          },
+          onBotReady: () => setStatus("Listening..."),
+          onUserStartedSpeaking: () => setStatus("Listening..."),
+          onUserStoppedSpeaking: () => setStatus("Thinking..."),
+          onBotStartedSpeaking: () => setStatus("Speaking..."),
+          onBotStoppedSpeaking: () => setStatus("Listening..."),
+          onUserTranscript: (data) => {
+            if (data.final) addMessage(data.text, "user");
+          },
+          onBotTranscript: (data) => addMessage(data.text, "bot"),
+          onError: (error) => setStatus(`Error: ${error.message ?? error}`),
+        },
+      });
+
+      client.on("track-started", (track, participant) => {
+        if (!participant?.local && track.kind === "audio") {
+          const audio = document.createElement("audio");
+          audio.autoplay = true;
+          audio.srcObject = new MediaStream([track]);
+          document.body.appendChild(audio);
+        }
+      });
+
+      try {
+        await client.startBotAndConnect({
+          endpoint: "/start",
+          requestData: { transport: "webrtc", enableDefaultIceServers: true },
+        });
+      } catch (error) {
+        console.error(error);
+        setStatus(`Failed to connect: ${error.message ?? error}`);
+      }
+    }
+
+    async function disconnect() {
+      if (client) await client.disconnect();
+    }
+
+    connectBtn.addEventListener("click", () => {
+      if (connected) disconnect();
+      else connect();
+    });
+  </script>
+</body>
+</html>

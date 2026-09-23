@@ -1,7 +1,7 @@
 import aiohttp
+from loguru import logger
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
-from pipecat.frames.frames import LLMRunFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.worker import (
     PipelineParams,
@@ -15,114 +15,127 @@ from pipecat.processors.aggregators.llm_response_universal import (
 )
 from pipecat.services.elevenlabs.stt import ElevenLabsRealtimeSTTService
 from pipecat.services.elevenlabs.tts import ElevenLabsHttpTTSService
-from pipecat.transports.local.audio import (
-    LocalAudioTransport,
-    LocalAudioTransportParams,
-)
-from pipecat.turns.user_start import MinWordsUserTurnStartStrategy
-from pipecat.turns.user_turn_strategies import (
-    UserTurnStrategies,
-    default_user_turn_stop_strategies,
-)
-from pipecat.workers.runner import WorkerRunner
+from pipecat.transports.base_transport import BaseTransport
 
 from agent.core.settings import AgentSettings
 from agent.llm import OpenRouterLLMServiceNoThinking
+from agent.processors.context_window import ContextWindowTrimmer
 from agent.processors.metrics import LatencyMonitor
 from agent.processors.voice_tags import VoiceTagFilter
 from agent.prompts import build_system_prompt
 
 
 def build_pipeline(
-    settings: AgentSettings, http_session: aiohttp.ClientSession
+    settings: AgentSettings,
+    transport: BaseTransport,
+    http_session: aiohttp.ClientSession,
 ) -> tuple[PipelineWorker, LLMContext]:
-    """assemble the voice agent pipeline and its conversation context."""
-    context = LLMContext()
-    user_params = LLMUserAggregatorParams(
-        vad_analyzer=SileroVADAnalyzer(
-            params=VADParams(
-                confidence=settings.vad_confidence,
-                start_secs=settings.vad_start_secs,
-                stop_secs=settings.vad_stop_secs,
-                min_volume=settings.vad_min_volume,
+    """assemble the voice agent pipeline and its conversation context.
+
+    the transport is built by the caller (see agent/bot.py) so this function
+    stays transport-agnostic - one webrtc connection in, one fresh pipeline
+    and context out.
+    """
+    try:
+        logger.debug("building VAD analyzer")
+        context = LLMContext()
+        # turn start/stop strategies are left at pipecat's defaults (vad +
+        # transcription to start, smart-turn analysis to stop). real barge-in
+        # works because the client captures the mic with echo cancellation
+        # enabled, so the bot never hears its own tts output.
+        user_params = LLMUserAggregatorParams(
+            vad_analyzer=SileroVADAnalyzer(
+                params=VADParams(
+                    confidence=settings.vad_confidence,
+                    start_secs=settings.vad_start_secs,
+                    stop_secs=settings.vad_stop_secs,
+                    min_volume=settings.vad_min_volume,
+                )
+            ),
+        )
+        user_aggregator, assistant_aggregator = LLMContextAggregatorPair(
+            context, user_params=user_params
+        )
+
+        logger.debug("initializing STT service")
+        stt = ElevenLabsRealtimeSTTService(
+            api_key=settings.elevenlabs_api_key,
+            settings=ElevenLabsRealtimeSTTService.Settings(
+                filter_background_audio=settings.stt_filter_background_audio,
+                no_verbatim=settings.stt_no_verbatim,
+                language="en",
+            ),
+        )
+
+        logger.debug("initializing LLM service with model={}", settings.llm_model)
+        llm = OpenRouterLLMServiceNoThinking(
+            api_key=settings.openrouter_api_key,
+            settings=OpenRouterLLMServiceNoThinking.Settings(
+                model=settings.llm_model,
+                temperature=settings.llm_temperature,
+                max_tokens=settings.llm_max_tokens,
+                system_instruction=build_system_prompt(settings),
+            ),
+        )
+
+        logger.debug(
+            "initializing TTS service with voice_id={}", settings.elevenlabs_voice_id
+        )
+        tts_settings_kwargs = {
+            "voice": settings.elevenlabs_voice_id,
+            "model": settings.tts_model,
+            "stability": settings.tts_stability,
+            "style": settings.tts_style,
+            "speed": settings.tts_speed,
+        }
+        if not settings.uses_emotion_tags():
+            # eleven_v3 rejects this param outright with a 400; other models
+            # accept it and it meaningfully cuts time-to-first-byte.
+            tts_settings_kwargs["optimize_streaming_latency"] = (
+                settings.tts_optimize_streaming_latency
             )
-        ),
-        user_turn_strategies=UserTurnStrategies(
-            start=[
-                MinWordsUserTurnStartStrategy(min_words=settings.interrupt_min_words)
-            ],
-            stop=default_user_turn_stop_strategies(),
-        ),
-    )
-    user_aggregator, assistant_aggregator = LLMContextAggregatorPair(
-        context, user_params=user_params
-    )
+        tts = ElevenLabsHttpTTSService(
+            api_key=settings.elevenlabs_api_key,
+            aiohttp_session=http_session,
+            settings=ElevenLabsHttpTTSService.Settings(**tts_settings_kwargs),
+        )
 
-    transport = LocalAudioTransport(
-        params=LocalAudioTransportParams(audio_in_enabled=True, audio_out_enabled=True)
-    )
+        logger.debug("initializing voice tag processors")
+        # on models that don't understand [tag] markup, tags get read aloud as
+        # words (confirmed by direct testing) - strip them all before tts as a
+        # safety net in case the llm emits one despite the prompt not asking for it.
+        tag_guard = VoiceTagFilter(
+            settings.voice_tags, strip=not settings.uses_emotion_tags()
+        )
+        tag_stripper = VoiceTagFilter(settings.voice_tags, strip=True)
+        monitor = LatencyMonitor()
+        context_trimmer = ContextWindowTrimmer(max_turns=settings.context_max_turns)
 
-    stt = ElevenLabsRealtimeSTTService(
-        api_key=settings.elevenlabs_api_key,
-        settings=ElevenLabsRealtimeSTTService.Settings(
-            filter_background_audio=settings.stt_filter_background_audio,
-            no_verbatim=settings.stt_no_verbatim,
-        ),
-    )
+        logger.debug("assembling pipeline")
+        pipeline = Pipeline(
+            [
+                transport.input(),
+                stt,
+                user_aggregator,
+                context_trimmer,
+                llm,
+                tag_guard,
+                tts,
+                tag_stripper,
+                transport.output(),
+                assistant_aggregator,
+                monitor,
+            ]
+        )
 
-    llm = OpenRouterLLMServiceNoThinking(
-        api_key=settings.openrouter_api_key,
-        settings=OpenRouterLLMServiceNoThinking.Settings(
-            model=settings.llm_model,
-            temperature=settings.llm_temperature,
-            max_tokens=settings.llm_max_tokens,
-            system_instruction=build_system_prompt(settings),
-        ),
-    )
+        worker = PipelineWorker(
+            pipeline,
+            params=PipelineParams(enable_metrics=True),
+            processor_unusable_policy=ProcessorUnusablePolicy.END,
+        )
+        logger.info("pipeline built successfully")
+        return worker, context
 
-    tts = ElevenLabsHttpTTSService(
-        api_key=settings.elevenlabs_api_key,
-        aiohttp_session=http_session,
-        settings=ElevenLabsHttpTTSService.Settings(
-            voice=settings.elevenlabs_voice_id,
-            model=settings.tts_model,
-            stability=settings.tts_stability,
-        ),
-    )
-
-    tag_guard = VoiceTagFilter(settings.voice_tags, strip=False)
-    tag_stripper = VoiceTagFilter(settings.voice_tags, strip=True)
-    monitor = LatencyMonitor()
-
-    pipeline = Pipeline(
-        [
-            transport.input(),
-            stt,
-            user_aggregator,
-            llm,
-            tag_guard,
-            tts,
-            tag_stripper,
-            transport.output(),
-            assistant_aggregator,
-            monitor,
-        ]
-    )
-
-    worker = PipelineWorker(
-        pipeline,
-        params=PipelineParams(enable_metrics=True),
-        processor_unusable_policy=ProcessorUnusablePolicy.END,
-    )
-    return worker, context
-
-
-async def run_agent(settings: AgentSettings) -> None:
-    """run the agent until ctrl-c; the first llm run is the opening greeting."""
-    async with aiohttp.ClientSession() as http_session:
-        worker, context = build_pipeline(settings, http_session)
-        context.add_message({"role": "user", "content": "Start the session."})
-        await worker.queue_frames([LLMRunFrame()])
-        runner = WorkerRunner(handle_sigint=True)
-        await runner.add_workers(worker)
-        await runner.run()
+    except Exception as e:
+        logger.exception("failed to build pipeline: {}", str(e))
+        raise
