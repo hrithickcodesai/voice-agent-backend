@@ -48,8 +48,19 @@ export default {
     const sessionId = existing ?? crypto.randomUUID();
 
     const container = env.VOICE_AGENT_CONTAINER.getByName(sessionId);
-    await container.startAndWaitForPorts();
-    const response = await container.fetch(request);
+    let response: Response;
+    try {
+      await container.startAndWaitForPorts();
+      response = await container.fetch(request);
+    } catch (err) {
+      // Most commonly max_instances reached (every line busy) or a cold
+      // start that didn't come up in time - fail soft instead of a 1101.
+      console.error("container start/fetch failed", sessionId, err);
+      return new Response(
+        JSON.stringify({ error: "All lines are busy, please try again shortly." }),
+        { status: 503, headers: { "Content-Type": "application/json", "Retry-After": "30" } }
+      );
+    }
 
     if (existing) return response;
 
