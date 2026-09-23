@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Deploys preprod locally when the preprod branch is pushed, as a stand-in
+# for .github/workflows/deploy-preprod.yml while GitHub Actions is unavailable.
+# Activate with: git config core.hooksPath .githooks
+set -euo pipefail
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  if [[ "$local_ref" == "refs/heads/preprod" ]]; then
+    echo "==> Pushing preprod - running local deploy"
+    "$(git rev-parse --show-toplevel)/deploy-preprod.sh"
+  fi
+done
