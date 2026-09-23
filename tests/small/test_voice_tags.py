@@ -8,8 +8,8 @@ def test_extract_tags_finds_lowercased_tags():
     }
 
 
-def test_strip_tags_removes_all_tags():
-    assert strip_tags("[whispers] hello [laughs] world") == "hello world"
+def test_strip_tags_removes_tags_without_touching_text():
+    assert strip_tags("[whispers] hello [laughs] world") == " hello  world"
 
 
 def test_strip_tags_keeps_plain_text_untouched():
@@ -19,13 +19,20 @@ def test_strip_tags_keeps_plain_text_untouched():
 def test_filter_tags_keeps_only_whitelisted():
     allowed = {"[whispers]", "[excited]"}
     text = "[whispers] hi [angry] there [laughs]!"
-    assert filter_tags(text, allowed) == "[whispers] hi there!"
+    assert filter_tags(text, allowed) == "[whispers] hi  there !"
 
 
 def test_filter_tags_is_case_insensitive():
     assert filter_tags("[WHISPERS] hello", {"[whispers]"}) == "[WHISPERS] hello"
 
 
-def test_scrubbing_collapses_double_spaces():
-    assert strip_tags("[whispers]  hello   [laughs]  world") == "hello world"
-    assert filter_tags("[whispers] hi [laughs]!", {"[whispers]"}) == "[whispers] hi!"
+def test_streamed_tokens_keep_leading_space():
+    # openai-style tokens carry the space that separates words; the filter
+    # must never strip it or words run together.
+    assert filter_tags(" Ready", {"[whispers]"}) == " Ready"
+    assert strip_tags(" to") == " to"
+
+
+def test_tag_alone_becomes_empty_without_error():
+    assert filter_tags("[laughs]", set()) == ""
+    assert strip_tags("[laughs]") == ""

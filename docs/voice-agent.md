@@ -61,14 +61,21 @@ values from env / defaults). Notable: `llm_model`, `tts_model`,
 
 | stage | observed | note |
 |---|---|---|
-| STT commit | ~800ms | includes VAD stop_secs |
-| LLM first token | 2–15s | qwen3-14b runs chain-of-thought; OpenRouter ignores the thinking-off param for this model. Reasoning never reaches TTS — it only delays first audio |
-| TTS first byte | ~350ms | after first text arrives |
+| STT commit | ~550–800ms | includes VAD stop_secs |
+| LLM first token | 0.2–15s | qwen3-14b runs chain-of-thought; OpenRouter ignores the thinking-off param for this model. Reasoning never reaches TTS — it only delays first audio |
+| TTS first byte | 0.4–1.3s typical | spikes to 10–14s and occasional full dropouts are the Text-to-Dialogue endpoint on this plan, not the pipeline |
 
-First TTS context on a fresh connection can take ~6s before audio starts
-(server-side warmup); pipecat may close the context as "no audio" during that
-window. Later turns reuse the warm connection and are fast. The spoken reply
-always starts from the first sentence — nothing waits for the full answer.
+The TTD websocket endpoint is flaky in three known ways (verified by direct probes,
+Sep 2026):
+- the first context on a fresh connection often produces no audio if closed
+  within ~6s of connect (server-side warmup); later turns are fine
+- text under ~40 chars may never auto-generate; generation depends on flush or
+  close timing (pipecat flushes at turn end)
+- run-to-run latency for the same voice varies 0.4s to 14s
+
+Failures are non-fatal — pipecat logs the error and the next turn continues
+normally. The spoken reply always starts from the first sentence; nothing waits
+for the full answer.
 
 ## Tests and hygiene
 

@@ -5,8 +5,6 @@ from pipecat.frames.frames import Frame, TextFrame
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 _TAG = re.compile(r"\[[a-z][a-z ]*\]", re.IGNORECASE)
-_SPACES = re.compile(r"\s+")
-_BEFORE_PUNCT = re.compile(r"\s+(?=[.,!?;:)])")
 
 
 def extract_tags(text: str) -> set[str]:
@@ -14,25 +12,23 @@ def extract_tags(text: str) -> set[str]:
     return {m.group(0).lower() for m in _TAG.finditer(text)}
 
 
-def _clean(text: str) -> str:
-    return _BEFORE_PUNCT.sub("", _SPACES.sub(" ", text)).strip()
-
-
 def strip_tags(text: str) -> str:
-    """remove every tag-like token, leaving plain speech."""
-    return _clean(_TAG.sub("", text))
+    """remove every tag-like token, leaving everything else untouched."""
+    return _TAG.sub("", text)
 
 
 def filter_tags(text: str, allowed: Collection[str]) -> str:
-    """drop tags outside the whitelist, keep the rest untouched."""
+    """drop tags outside the whitelist, leave everything else untouched."""
     ok = {t.lower() for t in allowed}
 
     def _keep(match: re.Match) -> str:
         return match.group(0) if match.group(0).lower() in ok else ""
 
-    return _clean(_TAG.sub(_keep, text))
+    return _TAG.sub(_keep, text)
 
 
+# processors run per streamed token: whitespace must pass through untouched,
+# because openai-style tokens carry the space that separates words.
 class VoiceTagFilter(FrameProcessor):
     """scrub emotion tags between llm and tts for safety, or before context recording.
 

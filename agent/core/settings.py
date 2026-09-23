@@ -25,10 +25,10 @@ class AgentSettings(BaseSettings):
     # audio
     sample_rate: int = 16000
 
-    # vad (silero; pipecat defaults shown, stop tuned for spoken practice)
+    # vad (silero; pipecat defaults)
     vad_confidence: float = 0.7
     vad_start_secs: float = 0.2
-    vad_stop_secs: float = 0.4
+    vad_stop_secs: float = 0.2
     vad_min_volume: float = 0.6
 
     # allowed inline emotion tags: single source of truth for prompt and validator
