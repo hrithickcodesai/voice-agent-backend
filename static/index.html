@@ -187,6 +187,53 @@
       flex-shrink: 0;
     }
     .call-cta:active { filter: brightness(1.15); }
+    .contact-actions { display: flex; gap: 0.6rem; flex-shrink: 0; }
+
+    /* ---- FaceTime in-call: full-bleed video with floating controls ---- */
+    #screen-facetime {
+      background: radial-gradient(circle at 50% 30%, #3a4a63 0%, #141b27 75%);
+      align-items: center;
+      justify-content: center;
+    }
+    .ft-video {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: 50% 0%;
+      transform-origin: 50% 100%;
+      animation: breathe 4.2s ease-in-out infinite;
+    }
+    @keyframes breathe {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.012, 1.018); }
+    }
+    .ft-top {
+      position: absolute;
+      top: 1rem;
+      left: 0;
+      right: 0;
+      text-align: center;
+      text-shadow: 0 1px 6px rgba(0,0,0,0.5);
+    }
+    .ft-name { font-size: 1.15rem; font-weight: 600; }
+    .ft-timer { font-size: 0.85rem; color: #e5e5ea; margin-top: 0.15rem; }
+    .ft-controls {
+      position: absolute;
+      left: 50%;
+      bottom: max(1.6rem, env(safe-area-inset-bottom));
+      transform: translateX(-50%);
+      display: flex;
+      gap: 0.9rem;
+      padding: 0.7rem 0.9rem;
+      border-radius: 2rem;
+      background: rgba(40, 40, 44, 0.55);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+    }
+    .ft-controls .ctrl-circle { width: 52px; height: 52px; }
+    .ft-controls .end-btn { width: 52px; height: 52px; box-shadow: none; }
 
     /* ---- calling / in-call screens share this layout ---- */
     .call-screen {
@@ -310,11 +357,18 @@
             <div class="contact-name">English Tutor</div>
             <div class="contact-sub">mobile</div>
           </div>
-          <button class="call-cta" id="call-btn" aria-label="Call English Tutor">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-              <path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.4.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.5 21 3 13.5 3 4.9 3 4.4 3.4 4 4 4h3.4c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.4 0 .8-.2 1L6.6 10.8Z" fill="#fff"/>
-            </svg>
-          </button>
+          <div class="contact-actions">
+            <button class="call-cta" id="facetime-btn" aria-label="FaceTime English Tutor">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="#fff">
+                <rect x="2.5" y="6" width="13" height="12" rx="2.5"/><path d="M17 10.2 21.5 7v10L17 13.8Z"/>
+              </svg>
+            </button>
+            <button class="call-cta" id="call-btn" aria-label="Call English Tutor">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                <path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.4.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.5 21 3 13.5 3 4.9 3 4.4 3.4 4 4 4h3.4c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.4 0 .8-.2 1L6.6 10.8Z" fill="#fff"/>
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
     </section>
@@ -414,6 +468,45 @@
       </div>
     </section>
 
+    <!-- FaceTime in call: lip-synced avatar (see avatar/avatar.js) -->
+    <section id="screen-facetime" class="screen">
+      <canvas class="ft-video" id="ft-canvas" width="280" height="440"></canvas>
+      <div class="ft-top">
+        <div class="ft-name">English Tutor</div>
+        <div class="ft-timer" id="ft-timer">00:00</div>
+      </div>
+      <div class="ft-controls">
+        <button class="ctrl-btn" id="ft-speaker-btn" aria-label="Speaker">
+          <span class="ctrl-circle">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8">
+              <path d="M4 10v4h3l4 3.5v-10.5L7 10H4Z"/>
+              <path d="M16 9a4 4 0 0 1 0 6M18.5 7a8 8 0 0 1 0 10"/>
+            </svg>
+          </span>
+        </button>
+        <button class="ctrl-btn disabled" aria-label="Camera">
+          <span class="ctrl-circle">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8">
+              <rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10.5 21 7.5v9L16 13.5"/>
+            </svg>
+          </span>
+        </button>
+        <button class="ctrl-btn" id="ft-mute-btn" aria-label="Mute">
+          <span class="ctrl-circle">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8">
+              <path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z"/>
+              <path d="M19 11v1a7 7 0 0 1-14 0v-1M12 19v3"/>
+            </svg>
+          </span>
+        </button>
+        <button class="end-btn" id="ft-hangup-btn" aria-label="End FaceTime">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round">
+            <path d="M6 6l12 12M18 6 6 18"/>
+          </svg>
+        </button>
+      </div>
+    </section>
+
     <!-- Ended -->
     <section id="screen-ended" class="screen call-screen">
       <div class="call-identity">
@@ -438,12 +531,15 @@
       contacts: document.getElementById("screen-contacts"),
       calling: document.getElementById("screen-calling"),
       connected: document.getElementById("screen-connected"),
+      facetime: document.getElementById("screen-facetime"),
       ended: document.getElementById("screen-ended"),
     };
     const callStatusEl = screens.calling.querySelector(".call-status");
-    const callTimerEl = document.getElementById("call-timer");
-    const muteBtn = document.getElementById("mute-btn");
-    const speakerBtn = document.getElementById("speaker-btn");
+    const timerEls = [document.getElementById("call-timer"), document.getElementById("ft-timer")];
+    // audio-call and FaceTime screens each have their own mute/speaker
+    // buttons; they share one state and are toggled together.
+    const muteBtns = [document.getElementById("mute-btn"), document.getElementById("ft-mute-btn")];
+    const speakerBtns = [document.getElementById("speaker-btn"), document.getElementById("ft-speaker-btn")];
 
     function showScreen(name) {
       for (const el of Object.values(screens)) el.classList.remove("active");
@@ -529,13 +625,27 @@
 
     function startTimer() {
       callSeconds = 0;
-      callTimerEl.textContent = "00:00";
+      for (const el of timerEls) el.textContent = "00:00";
       timerInterval = setInterval(() => {
         callSeconds += 1;
         const m = String(Math.floor(callSeconds / 60)).padStart(2, "0");
         const s = String(callSeconds % 60).padStart(2, "0");
-        callTimerEl.textContent = `${m}:${s}`;
+        for (const el of timerEls) el.textContent = `${m}:${s}`;
       }, 1000);
+    }
+
+    // FaceTime avatar, loaded lazily so audio calls never fetch the ML runtime.
+    let avatarModule = null;
+    let talkingHead = null;
+    let isVideoCall = false;
+    // created in the FaceTime tap itself so it's allowed to run (see avatar.js)
+    let lipSyncCtx = null;
+    function loadAvatar() {
+      avatarModule ??= import("./avatar/avatar.js").then((mod) => {
+        mod.preloadAvatar().catch((e) => console.error("avatar preload failed", e));
+        return mod;
+      });
+      return avatarModule;
     }
     function stopTimer() {
       if (timerInterval) clearInterval(timerInterval);
@@ -547,6 +657,8 @@
       callActive = false;
       stopRingback();
       stopTimer();
+      talkingHead?.stop();
+      talkingHead = null;
       if (client) {
         try {
           await client.disconnect();
@@ -568,16 +680,18 @@
       showScreen("contacts");
     }
 
-    async function startCall() {
+    async function startCall({ video = false } = {}) {
       callActive = true;
+      isVideoCall = video;
       connectedScreenShown = false;
       muted = false;
       speakerOn = false;
-      muteBtn.classList.remove("on");
-      speakerBtn.classList.remove("on");
-      callStatusEl.textContent = "calling…";
+      for (const b of [...muteBtns, ...speakerBtns]) b.classList.remove("on");
+      callStatusEl.textContent = video ? "FaceTime…" : "calling…";
       showScreen("calling");
       startRingback();
+      // fetch the avatar runtime + model while it rings (~6MB, a few seconds)
+      if (video) loadAvatar();
 
       // Matches pipecat's own prebuilt client config: wait for full ICE
       // gathering (including TURN relay candidates) before sending the
@@ -598,7 +712,7 @@
             if (!callActive || connectedScreenShown) return;
             connectedScreenShown = true;
             stopRingback();
-            showScreen("connected");
+            showScreen(isVideoCall ? "facetime" : "connected");
             startTimer();
           },
           onDisconnected: () => {
@@ -625,6 +739,7 @@
           remoteAudioEl.volume = speakerOn ? 1.0 : 0.75;
           remoteAudioEl.srcObject = new MediaStream([track]);
           document.body.appendChild(remoteAudioEl);
+          if (isVideoCall) startTalkingHead(track);
         }
       });
 
@@ -645,22 +760,49 @@
       }
     }
 
-    document.getElementById("call-btn").addEventListener("click", startCall);
+    // The bot's audio track arrives while it's still ringing, so the avatar
+    // is already rendering (lips following the greeting) when the FaceTime
+    // screen appears on the first spoken word.
+    async function startTalkingHead(track) {
+      try {
+        const { TalkingHead } = await loadAvatar();
+        if (!callActive) return;
+        talkingHead?.stop();
+        talkingHead = new TalkingHead(document.getElementById("ft-canvas"));
+        talkingHead.setAudioTrack(track, lipSyncCtx);
+        await talkingHead.start();
+      } catch (e) {
+        // audio keeps working; only the video is missing
+        console.error("avatar failed to start", e);
+      }
+    }
+
+    document.getElementById("call-btn").addEventListener("click", () => startCall());
+    document.getElementById("facetime-btn").addEventListener("click", () => {
+      lipSyncCtx ??= new (window.AudioContext || window.webkitAudioContext)();
+      lipSyncCtx.resume();
+      startCall({ video: true });
+    });
     document.getElementById("cancel-btn").addEventListener("click", () => endCall("Call Ended"));
     document.getElementById("hangup-btn").addEventListener("click", () => endCall("Call Ended"));
+    document.getElementById("ft-hangup-btn").addEventListener("click", () => endCall("FaceTime Ended"));
 
-    muteBtn.addEventListener("click", () => {
-      if (!client) return;
-      muted = !muted;
-      client.enableMic(!muted);
-      muteBtn.classList.toggle("on", muted);
-    });
+    for (const btn of muteBtns) {
+      btn.addEventListener("click", () => {
+        if (!client) return;
+        muted = !muted;
+        client.enableMic(!muted);
+        for (const b of muteBtns) b.classList.toggle("on", muted);
+      });
+    }
 
-    speakerBtn.addEventListener("click", () => {
-      speakerOn = !speakerOn;
-      speakerBtn.classList.toggle("on", speakerOn);
-      if (remoteAudioEl) remoteAudioEl.volume = speakerOn ? 1.0 : 0.75;
-    });
+    for (const btn of speakerBtns) {
+      btn.addEventListener("click", () => {
+        speakerOn = !speakerOn;
+        for (const b of speakerBtns) b.classList.toggle("on", speakerOn);
+        if (remoteAudioEl) remoteAudioEl.volume = speakerOn ? 1.0 : 0.75;
+      });
+    }
   </script>
 </body>
 </html>
