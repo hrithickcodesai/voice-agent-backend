@@ -530,7 +530,11 @@
       showScreen("calling");
       startRingback();
 
-      const transport = new SmallWebRTCTransport();
+      // Matches pipecat's own prebuilt client config: wait for full ICE
+      // gathering (including TURN relay candidates) before sending the
+      // offer, instead of relying on trickle ICE - more reliable through
+      // a TURN relay.
+      const transport = new SmallWebRTCTransport({ waitForICEGathering: true });
       client = new PipecatClient({
         transport,
         enableMic: true,
