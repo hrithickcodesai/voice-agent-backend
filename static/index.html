@@ -21,7 +21,9 @@
       align-items: center;
       justify-content: center;
     }
-    #device-frame { position: relative; }
+    /* width matters: #device-frame is a flex item, so without it it shrinks
+       to its content and #phone's width:100% collapses to a sliver. */
+    #device-frame { position: relative; width: 100%; }
     #phone {
       width: 100%;
       max-width: 430px;
@@ -45,6 +47,7 @@
       #simulator { padding: 3rem 0; }
 
       #device-frame {
+        width: auto;
         padding: 16px;
         border-radius: 64px;
         background: linear-gradient(155deg, #4a4a4d, #232325 35%, #050505 100%);
@@ -119,6 +122,13 @@
        not inside #phone directly (screens used to cover the whole phone,
        including the status bar and notch). */
     #screens { position: relative; flex: 1; overflow: hidden; }
+
+    /* real phones draw their own status bar, so ours would just be a
+       duplicate clock - drop it and keep only the safe-area inset it gave. */
+    @media (max-width: 699px) {
+      .status-bar { display: none; }
+      #screens { margin-top: env(safe-area-inset-top); }
+    }
     .screen {
       position: absolute;
       inset: 0;
