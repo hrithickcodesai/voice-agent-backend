@@ -576,7 +576,7 @@
         },
       });
 
-      client.on("track-started", (track, participant) => {
+      client.on("trackStarted", (track, participant) => {
         if (!participant?.local && track.kind === "audio") {
           remoteAudioEl = document.createElement("audio");
           remoteAudioEl.className = "hidden-audio";
