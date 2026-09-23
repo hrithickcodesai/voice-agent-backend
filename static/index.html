@@ -95,9 +95,13 @@
       .side-btn.vol-up      { left: -2px; top: 172px; width: 4px; height: 58px; border-radius: 2px 0 0 2px; }
       .side-btn.vol-down    { left: -2px; top: 240px; width: 4px; height: 58px; border-radius: 2px 0 0 2px; }
       .side-btn.power-btn   { right: -2px; top: 196px; width: 4px; height: 92px; border-radius: 0 2px 2px 0; }
+
+      /* clear the fake notch: a real phone's env(safe-area-inset-top)
+         already does this, but that resolves to 0 in a desktop browser. */
+      .status-bar { padding-top: 46px; }
     }
 
-    /* status bar */
+    /* status bar - fixed chrome above the screen stack, always visible */
     .status-bar {
       display: flex;
       justify-content: space-between;
@@ -106,9 +110,15 @@
       font-size: 0.85rem;
       font-weight: 600;
       flex-shrink: 0;
+      position: relative;
+      z-index: 20;
+      background: #000;
     }
 
-    /* screens */
+    /* screens - stacked inside #screens, which sits below the status bar,
+       not inside #phone directly (screens used to cover the whole phone,
+       including the status bar and notch). */
+    #screens { position: relative; flex: 1; overflow: hidden; }
     .screen {
       position: absolute;
       inset: 0;
@@ -279,6 +289,7 @@
       <span></span>
     </div>
 
+    <div id="screens">
     <!-- Contact detail (iOS Contact card, one contact only) -->
     <section id="screen-contacts" class="screen active">
       <div class="contacts-header"><h1>Contacts</h1></div>
@@ -404,6 +415,7 @@
       </div>
       <div></div>
     </section>
+    </div>
   </div>
   </div>
   </div>
