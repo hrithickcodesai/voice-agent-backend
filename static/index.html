@@ -478,6 +478,7 @@
     let timerInterval = null;
     let callSeconds = 0;
     let callActive = false;
+    let connectedScreenShown = false;
 
     function delay(ms) {
       return new Promise((resolve) => setTimeout(resolve, ms));
@@ -522,6 +523,7 @@
 
     async function startCall() {
       callActive = true;
+      connectedScreenShown = false;
       muted = false;
       speakerOn = false;
       muteBtn.classList.remove("on");
@@ -540,8 +542,14 @@
         enableMic: true,
         enableCam: false,
         callbacks: {
-          onBotReady: async () => {
-            if (!callActive) return;
+          // onBotReady only means the pipeline is wired up, not that the
+          // bot has actually said anything yet - cold start + LLM + TTS
+          // can take several seconds beyond that. Keep ringing until the
+          // bot actually starts speaking, so the ring covers that gap
+          // instead of dropping into a silent "connected" screen.
+          onBotStartedSpeaking: () => {
+            if (!callActive || connectedScreenShown) return;
+            connectedScreenShown = true;
             stopRingback();
             showScreen("connected");
             startTimer();
