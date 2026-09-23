@@ -1,4 +1,4 @@
-.PHONY: install format check clean
+.PHONY: install format check clean agent
 
 install:
 	uv sync
@@ -10,6 +10,9 @@ format:
 check:
 	uv run ruff check .
 	uv run ruff format --check .
+
+agent:
+	uv run python main.py
 
 clean:
 	find . -type d \( -name __pycache__ -o -name .ruff_cache -o -name .pytest_cache \) -prune -exec rm -rf {} +
