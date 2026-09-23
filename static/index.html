@@ -21,6 +21,7 @@
       align-items: center;
       justify-content: center;
     }
+    #device-frame { position: relative; }
     #phone {
       width: 100%;
       max-width: 430px;
@@ -32,29 +33,37 @@
       flex-direction: column;
       overflow: hidden;
     }
-    #notch { display: none; }
+    #notch, .home-indicator, .side-btn { display: none; }
 
     /* iOS-simulator device frame, shown on desktop/tablet viewports only -
-       real phones already have a device frame, so below this breakpoint
-       #phone just fills the viewport edge-to-edge as normal. */
+       real phones already have a device frame (and their own home
+       indicator/notch drawn by the OS), so below this breakpoint #phone
+       just fills the viewport edge-to-edge as normal, frame-free. */
     @media (min-width: 700px) {
       html, body { overflow: auto; }
-      body { background: radial-gradient(circle at 50% 30%, #2c2c2e, #0a0a0a 75%); }
+      body { background: radial-gradient(circle at 50% 30%, #302f33, #08080a 75%); }
       #simulator { padding: 3rem 0; }
+
+      #device-frame {
+        padding: 16px;
+        border-radius: 64px;
+        background: linear-gradient(155deg, #4a4a4d, #232325 35%, #050505 100%);
+        box-shadow:
+          0 0 0 1px rgba(255, 255, 255, 0.08) inset,
+          0 50px 100px rgba(0, 0, 0, 0.65);
+      }
       #phone {
         width: 393px;
         height: 852px;
         max-width: none;
-        border-radius: 55px;
-        box-shadow:
-          0 0 0 3px #3a3a3c,
-          0 0 0 14px #050505,
-          0 45px 90px rgba(0, 0, 0, 0.6);
+        border-radius: 50px;
+        box-shadow: 0 0 0 2px #000;
       }
+
       #notch {
         display: block;
         position: absolute;
-        top: 14px;
+        top: 12px;
         left: 50%;
         transform: translateX(-50%);
         width: 126px;
@@ -63,6 +72,29 @@
         border-radius: 18px;
         z-index: 50;
       }
+      .home-indicator {
+        display: block;
+        position: absolute;
+        bottom: 8px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 134px;
+        height: 5px;
+        border-radius: 3px;
+        background: rgba(255, 255, 255, 0.9);
+        z-index: 50;
+      }
+
+      /* hardware buttons, protruding from the outer frame */
+      .side-btn {
+        display: block;
+        position: absolute;
+        background: linear-gradient(90deg, #1c1c1e, #333336);
+      }
+      .side-btn.mute-switch { left: -2px; top: 122px; width: 4px; height: 28px; border-radius: 2px 0 0 2px; }
+      .side-btn.vol-up      { left: -2px; top: 172px; width: 4px; height: 58px; border-radius: 2px 0 0 2px; }
+      .side-btn.vol-down    { left: -2px; top: 240px; width: 4px; height: 58px; border-radius: 2px 0 0 2px; }
+      .side-btn.power-btn   { right: -2px; top: 196px; width: 4px; height: 92px; border-radius: 0 2px 2px 0; }
     }
 
     /* status bar */
@@ -234,8 +266,14 @@
 </head>
 <body>
   <div id="simulator">
+  <div id="device-frame">
+    <div class="side-btn mute-switch"></div>
+    <div class="side-btn vol-up"></div>
+    <div class="side-btn vol-down"></div>
+    <div class="side-btn power-btn"></div>
   <div id="phone">
     <div id="notch"></div>
+    <div class="home-indicator"></div>
     <div class="status-bar">
       <span id="clock">9:41</span>
       <span></span>
@@ -366,6 +404,7 @@
       </div>
       <div></div>
     </section>
+  </div>
   </div>
   </div>
 
