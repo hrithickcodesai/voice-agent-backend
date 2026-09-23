@@ -64,6 +64,9 @@ def build_pipeline(
             settings=ElevenLabsRealtimeSTTService.Settings(
                 filter_background_audio=settings.stt_filter_background_audio,
                 no_verbatim=settings.stt_no_verbatim,
+                # bias transcription toward the tutor's name plus any extra
+                # terms configured in .env
+                keyterms=[settings.agent_name, *settings.stt_keyterms],
                 language="en",
             ),
         )
@@ -71,6 +74,7 @@ def build_pipeline(
         logger.debug("initializing LLM service with model={}", settings.llm_model)
         llm = OpenRouterLLMServiceNoThinking(
             api_key=settings.openrouter_api_key,
+            provider_order=settings.llm_provider_order,
             settings=OpenRouterLLMServiceNoThinking.Settings(
                 model=settings.llm_model,
                 temperature=settings.llm_temperature,

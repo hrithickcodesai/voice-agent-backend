@@ -7,6 +7,8 @@ interface Env {
   ELEVENLABS_VOICE_ID: string;
   OPENROUTER_API_KEY: string;
   PIPECAT_ICE_SERVERS: string;
+  LLM_MODEL: string;
+  AGENT_NAME: string;
 }
 
 export class VoiceAgentContainer extends Container<Env> {
@@ -23,6 +25,8 @@ export class VoiceAgentContainer extends Container<Env> {
     ELEVENLABS_VOICE_ID: this.env.ELEVENLABS_VOICE_ID,
     OPENROUTER_API_KEY: this.env.OPENROUTER_API_KEY,
     PIPECAT_ICE_SERVERS: this.env.PIPECAT_ICE_SERVERS,
+    LLM_MODEL: this.env.LLM_MODEL,
+    AGENT_NAME: this.env.AGENT_NAME,
     EXIT_AFTER_CALL: "true",
   };
 }
