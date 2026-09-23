@@ -14,3 +14,8 @@ wheels/
 
 # macOS
 .DS_Store
+
+# Node / wrangler
+node_modules/
+.wrangler/
+

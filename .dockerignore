@@ -1,0 +1,13 @@
+.venv
+.git
+.github
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+tests
+notebooks
+docs
+worker
+node_modules
+.env
