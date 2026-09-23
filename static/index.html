@@ -202,13 +202,42 @@
       height: 100%;
       object-fit: cover;
       object-position: 50% 0%;
-      transform-origin: 50% 100%;
-      animation: breathe 4.2s ease-in-out infinite;
     }
-    @keyframes breathe {
-      0%, 100% { transform: scale(1); }
-      50% { transform: scale(1.012, 1.018); }
+
+    /* your own camera, like real FaceTime: full-screen while it rings, then
+       a mirrored picture-in-picture. Local preview only - never sent. */
+    .self-view {
+      position: absolute;
+      right: 14px;
+      bottom: calc(max(1.6rem, env(safe-area-inset-bottom)) + 88px);
+      width: 100px;
+      aspect-ratio: 3 / 4;
+      border-radius: 14px;
+      object-fit: cover;
+      transform: scaleX(-1);
+      background: #1c1c1e;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+      z-index: 5;
     }
+    .ring-self {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1);
+      display: none;
+    }
+    #screen-calling.video .ring-self { display: block; }
+    #screen-calling.video::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(rgba(0,0,0,0.55), rgba(0,0,0,0.05) 40%, rgba(0,0,0,0.45));
+    }
+    #screen-calling.video .call-avatar-wrap { display: none; }
+    #screen-calling > :not(video) { position: relative; z-index: 1; }
+    .cam-off { display: none !important; }
     .ft-top {
       position: absolute;
       top: 1rem;
@@ -352,18 +381,18 @@
       <div class="contacts-header"><h1>Contacts</h1></div>
       <div class="contacts-list">
         <div class="contact-row">
-          <div class="contact-avatar">ET</div>
+          <div class="contact-avatar">A</div>
           <div class="contact-meta">
-            <div class="contact-name">English Tutor</div>
+            <div class="contact-name">Alex</div>
             <div class="contact-sub">mobile</div>
           </div>
           <div class="contact-actions">
-            <button class="call-cta" id="facetime-btn" aria-label="FaceTime English Tutor">
+            <button class="call-cta" id="facetime-btn" aria-label="FaceTime Alex">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="#fff">
                 <rect x="2.5" y="6" width="13" height="12" rx="2.5"/><path d="M17 10.2 21.5 7v10L17 13.8Z"/>
               </svg>
             </button>
-            <button class="call-cta" id="call-btn" aria-label="Call English Tutor">
+            <button class="call-cta" id="call-btn" aria-label="Call Alex">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                 <path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.4.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.5 21 3 13.5 3 4.9 3 4.4 3.4 4 4 4h3.4c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.4 0 .8-.2 1L6.6 10.8Z" fill="#fff"/>
               </svg>
@@ -375,13 +404,14 @@
 
     <!-- Calling / ringing -->
     <section id="screen-calling" class="screen call-screen">
+      <video class="ring-self" id="ring-self" autoplay muted playsinline></video>
       <div class="call-identity">
         <div class="call-avatar-wrap">
           <div class="ring-pulse"></div>
           <div class="ring-pulse"></div>
-          <div class="call-avatar">ET</div>
+          <div class="call-avatar">A</div>
         </div>
-        <div class="call-name">English Tutor</div>
+        <div class="call-name">Alex</div>
         <div class="call-status">calling&hellip;</div>
       </div>
       <div class="end-row">
@@ -397,9 +427,9 @@
     <section id="screen-connected" class="screen call-screen">
       <div class="call-identity">
         <div class="call-avatar-wrap">
-          <div class="call-avatar">ET</div>
+          <div class="call-avatar">A</div>
         </div>
-        <div class="call-name">English Tutor</div>
+        <div class="call-name">Alex</div>
         <div class="call-status" id="call-timer">00:00</div>
       </div>
 
@@ -471,8 +501,9 @@
     <!-- FaceTime in call: lip-synced avatar (see avatar/avatar.js) -->
     <section id="screen-facetime" class="screen">
       <canvas class="ft-video" id="ft-canvas" width="280" height="440"></canvas>
+      <video class="self-view" id="ft-self" autoplay muted playsinline></video>
       <div class="ft-top">
-        <div class="ft-name">English Tutor</div>
+        <div class="ft-name">Alex</div>
         <div class="ft-timer" id="ft-timer">00:00</div>
       </div>
       <div class="ft-controls">
@@ -484,7 +515,7 @@
             </svg>
           </span>
         </button>
-        <button class="ctrl-btn disabled" aria-label="Camera">
+        <button class="ctrl-btn" id="ft-cam-btn" aria-label="Camera">
           <span class="ctrl-circle">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8">
               <rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10.5 21 7.5v9L16 13.5"/>
@@ -511,9 +542,9 @@
     <section id="screen-ended" class="screen call-screen">
       <div class="call-identity">
         <div class="call-avatar-wrap">
-          <div class="call-avatar">ET</div>
+          <div class="call-avatar">A</div>
         </div>
-        <div class="call-name">English Tutor</div>
+        <div class="call-name">Alex</div>
         <div class="call-status">Call Ended</div>
       </div>
       <div></div>
@@ -640,6 +671,37 @@
     let isVideoCall = false;
     // created in the FaceTime tap itself so it's allowed to run (see avatar.js)
     let lipSyncCtx = null;
+
+    // Your own camera for FaceTime - a local preview only (the pipecat client
+    // keeps enableCam off, so nothing is sent to the tutor).
+    let selfStream = null;
+    let cameraOff = false;
+    const selfViews = [document.getElementById("ring-self"), document.getElementById("ft-self")];
+    const camBtn = document.getElementById("ft-cam-btn");
+    async function startSelfView() {
+      cameraOff = false;
+      camBtn.classList.remove("on");
+      try {
+        selfStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "user", width: { ideal: 720 }, height: { ideal: 960 } },
+          audio: false,
+        });
+        if (!callActive) return stopSelfView();
+        for (const v of selfViews) {
+          v.srcObject = selfStream;
+          v.classList.remove("cam-off");
+        }
+      } catch (e) {
+        // no camera or permission denied: FaceTime still works, just no preview
+        console.warn("camera unavailable", e);
+        for (const v of selfViews) v.classList.add("cam-off");
+      }
+    }
+    function stopSelfView() {
+      selfStream?.getTracks().forEach((t) => t.stop());
+      selfStream = null;
+      for (const v of selfViews) v.srcObject = null;
+    }
     function loadAvatar() {
       avatarModule ??= import("./avatar/avatar.js").then((mod) => {
         mod.preloadAvatar().catch((e) => console.error("avatar preload failed", e));
@@ -659,6 +721,8 @@
       stopTimer();
       talkingHead?.stop();
       talkingHead = null;
+      stopSelfView();
+      screens.calling.classList.remove("video");
       if (client) {
         try {
           await client.disconnect();
@@ -688,6 +752,7 @@
       speakerOn = false;
       for (const b of [...muteBtns, ...speakerBtns]) b.classList.remove("on");
       callStatusEl.textContent = video ? "FaceTime…" : "calling…";
+      screens.calling.classList.toggle("video", video);
       showScreen("calling");
       startRingback();
       // fetch the avatar runtime + model while it rings (~6MB, a few seconds)
@@ -782,6 +847,15 @@
       lipSyncCtx ??= new (window.AudioContext || window.webkitAudioContext)();
       lipSyncCtx.resume();
       startCall({ video: true });
+      startSelfView();
+    });
+
+    camBtn.addEventListener("click", () => {
+      if (!selfStream) return;
+      cameraOff = !cameraOff;
+      selfStream.getVideoTracks().forEach((t) => (t.enabled = !cameraOff));
+      camBtn.classList.toggle("on", cameraOff);
+      document.getElementById("ft-self").classList.toggle("cam-off", cameraOff);
     });
     document.getElementById("cancel-btn").addEventListener("click", () => endCall("Call Ended"));
     document.getElementById("hangup-btn").addEventListener("click", () => endCall("Call Ended"));

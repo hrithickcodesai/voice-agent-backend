@@ -1,6 +1,6 @@
 # Avatar model and character attribution
 
-`face.onnx` and `character.png` are derived from the `lambda_00` student model
+`face.onnx` and `character.png` are derived from the `lambda_01` student model
 and character image in
 [pkhungurn/talking-head-anime-4-demo](https://github.com/pkhungurn/talking-head-anime-4-demo),
 Copyright (c) 2024 pixiv Inc.
