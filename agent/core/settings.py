@@ -1,4 +1,6 @@
-from pydantic import field_validator
+from typing import Literal
+
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,8 +13,34 @@ class AgentSettings(BaseSettings):
 
     # credentials
     elevenlabs_api_key: str
-    elevenlabs_voice_id: str
     openrouter_api_key: str
+
+    # tts provider selection. "elevenlabs" keeps using ElevenLabsHttpTTSService
+    # (voice tags, streaming-latency tuning, etc. below); "fish" switches to
+    # FishAudioTTSService instead. stt stays on elevenlabs regardless - this
+    # flag only affects which service renders the bot's speech.
+    tts_provider: Literal["elevenlabs", "fish"] = "elevenlabs"
+    elevenlabs_voice_id: str | None = None
+    fish_audio_api_key: str | None = None
+    fish_audio_voice_id: str | None = None
+
+    @model_validator(mode="after")
+    def validate_tts_provider_credentials(self) -> "AgentSettings":
+        if self.tts_provider == "elevenlabs":
+            if not self.elevenlabs_voice_id or not self.elevenlabs_voice_id.strip():
+                raise ValueError(
+                    "elevenlabs_voice_id is required when tts_provider is 'elevenlabs'"
+                )
+        elif self.tts_provider == "fish":
+            if not self.fish_audio_api_key or not self.fish_audio_api_key.strip():
+                raise ValueError(
+                    "fish_audio_api_key is required when tts_provider is 'fish'"
+                )
+            if not self.fish_audio_voice_id or not self.fish_audio_voice_id.strip():
+                raise ValueError(
+                    "fish_audio_voice_id is required when tts_provider is 'fish'"
+                )
+        return self
 
     # llm (openrouter, openai-compatible)
     llm_model: str = "cognitivecomputations/dolphin-mistral-24b-venice-edition"
@@ -108,9 +136,9 @@ class AgentSettings(BaseSettings):
 
     @field_validator("elevenlabs_voice_id")
     @classmethod
-    def validate_elevenlabs_voice_id(cls, v: str) -> str:
-        if not v or not v.strip():
-            raise ValueError("elevenlabs_voice_id is required and cannot be empty")
+    def validate_elevenlabs_voice_id(cls, v: str | None) -> str | None:
+        if v is not None and not v.strip():
+            raise ValueError("elevenlabs_voice_id cannot be empty")
         return v
 
     @field_validator("openrouter_api_key")

@@ -15,6 +15,7 @@ from pipecat.processors.aggregators.llm_response_universal import (
 )
 from pipecat.services.elevenlabs.stt import ElevenLabsRealtimeSTTService
 from pipecat.services.elevenlabs.tts import ElevenLabsHttpTTSService
+from pipecat.services.fish.tts import FishAudioTTSService
 from pipecat.transports.base_transport import BaseTransport
 
 from agent.core.settings import AgentSettings
@@ -79,27 +80,33 @@ def build_pipeline(
             ),
         )
 
-        logger.debug(
-            "initializing TTS service with voice_id={}", settings.elevenlabs_voice_id
-        )
-        tts_settings_kwargs = {
-            "voice": settings.elevenlabs_voice_id,
-            "model": settings.tts_model,
-            "stability": settings.tts_stability,
-            "style": settings.tts_style,
-            "speed": settings.tts_speed,
-        }
-        if not settings.uses_emotion_tags():
-            # eleven_v3 rejects this param outright with a 400; other models
-            # accept it and it meaningfully cuts time-to-first-byte.
-            tts_settings_kwargs["optimize_streaming_latency"] = (
-                settings.tts_optimize_streaming_latency
+        logger.debug("initializing TTS service with provider={}", settings.tts_provider)
+        if settings.tts_provider == "fish":
+            tts = FishAudioTTSService(
+                api_key=settings.fish_audio_api_key,
+                settings=FishAudioTTSService.Settings(
+                    voice=settings.fish_audio_voice_id,
+                ),
             )
-        tts = ElevenLabsHttpTTSService(
-            api_key=settings.elevenlabs_api_key,
-            aiohttp_session=http_session,
-            settings=ElevenLabsHttpTTSService.Settings(**tts_settings_kwargs),
-        )
+        else:
+            tts_settings_kwargs = {
+                "voice": settings.elevenlabs_voice_id,
+                "model": settings.tts_model,
+                "stability": settings.tts_stability,
+                "style": settings.tts_style,
+                "speed": settings.tts_speed,
+            }
+            if not settings.uses_emotion_tags():
+                # eleven_v3 rejects this param outright with a 400; other models
+                # accept it and it meaningfully cuts time-to-first-byte.
+                tts_settings_kwargs["optimize_streaming_latency"] = (
+                    settings.tts_optimize_streaming_latency
+                )
+            tts = ElevenLabsHttpTTSService(
+                api_key=settings.elevenlabs_api_key,
+                aiohttp_session=http_session,
+                settings=ElevenLabsHttpTTSService.Settings(**tts_settings_kwargs),
+            )
 
         logger.debug("initializing voice tag processors")
         # on models that don't understand [tag] markup, tags get read aloud as
