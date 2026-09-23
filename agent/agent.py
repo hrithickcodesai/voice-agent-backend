@@ -63,6 +63,9 @@ def build_pipeline(
             settings=ElevenLabsRealtimeSTTService.Settings(
                 filter_background_audio=settings.stt_filter_background_audio,
                 no_verbatim=settings.stt_no_verbatim,
+                # bias transcription toward the tutor's name plus any extra
+                # terms configured in .env
+                keyterms=[settings.agent_name, *settings.stt_keyterms],
                 language="en",
             ),
         )

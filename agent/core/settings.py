@@ -14,8 +14,16 @@ class AgentSettings(BaseSettings):
     elevenlabs_voice_id: str
     openrouter_api_key: str
 
-    # llm (openrouter, openai-compatible)
-    llm_model: str = "cognitivecomputations/dolphin-mistral-24b-venice-edition"
+    # persona (required, comes from AGENT_NAME in .env)
+    agent_name: str
+
+    # llm (openrouter, openai-compatible; required, comes from LLM_MODEL in .env)
+    llm_model: str
+    # openrouter routes each model across many providers, some serving heavily
+    # quantized weights (deepinfra serves qwen3.5-122b at fp4). pinning the
+    # order with fallbacks disabled keeps traffic on full-precision endpoints
+    # only: novita (bf16) first, alibaba (official qwen) as backup.
+    llm_provider_order: tuple[str, ...] = ("Novita", "Alibaba")
     # temperature tuned above default for livelier replies, but not so high that
     # correction quality degrades; top_p keeps the sampled set coherent
     llm_temperature: float = 0.8
@@ -98,6 +106,20 @@ class AgentSettings(BaseSettings):
         aloud as words, so tags must be stripped before reaching them.
         """
         return self.tts_model == "eleven_v3"
+
+    @field_validator("agent_name")
+    @classmethod
+    def validate_agent_name(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("agent_name is required and cannot be empty")
+        return v.strip()
+
+    @field_validator("llm_model")
+    @classmethod
+    def validate_llm_model(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("llm_model is required and cannot be empty")
+        return v.strip()
 
     @field_validator("elevenlabs_api_key")
     @classmethod
