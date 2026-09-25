@@ -169,7 +169,7 @@ class SpeculationListener(FrameProcessor):
         cache: SpeculationCache,
         context: LLMContext,
         system_prompt: str,
-        min_words: int = 2,
+        min_words: int = 1,
         debounce_secs: float = 0.3,
         max_calls_per_turn: int = 3,
         **kwargs,

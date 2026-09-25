@@ -123,7 +123,11 @@ class AgentSettings(BaseSettings):
     # serves qwen and would leave gpt-oss unroutable. empty = openrouter's
     # default routing across all serving providers.
     speculation_provider_order: tuple[str, ...] = ()
-    speculation_min_words: int = 2
+    # 1 instead of 2: single-word turns ("meaning?") otherwise never get
+    # speculated and pay the full normal-path latency; filler words are
+    # already excluded by the backchannel filter, so a 1-word call is either
+    # a real question or a free miss
+    speculation_min_words: int = 1
     speculation_debounce_secs: float = 0.3
     speculation_max_calls_per_turn: int = 3
     # how long the gate may hold the kickoff frame waiting for an in-flight
