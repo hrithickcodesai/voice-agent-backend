@@ -28,7 +28,11 @@ async def bot(runner_args: RunnerArguments) -> None:
     )
 
     try:
-        async with aiohttp.ClientSession() as http_session:
+        # aiohttp's default connector drops idle connections after 15s - any
+        # turn gap longer than that makes the next tts synthesis pay tcp+tls
+        # again. hold elevenlabs sockets open across turn gaps instead.
+        connector = aiohttp.TCPConnector(keepalive_timeout=300)
+        async with aiohttp.ClientSession(connector=connector) as http_session:
             worker, context = build_pipeline(settings, transport, http_session)
             context.add_message({"role": "user", "content": "Start the session."})
             await worker.queue_frames([LLMRunFrame()])

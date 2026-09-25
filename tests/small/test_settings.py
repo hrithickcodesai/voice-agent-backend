@@ -108,9 +108,11 @@ def test_settings_stt_is_verbatim_by_default():
 
 
 def test_settings_vad_tuned_for_hesitant_speech():
-    """0.2s stop / 0.6 volume floor cut off hesitant and soft speakers."""
+    """0.2s stop cut speakers off mid-sentence; 0.5s added 100ms of dead air
+    per turn. 0.4s is the latency/turn-taking compromise; volume floor guards
+    soft speech."""
     settings = make_settings()
-    assert settings.vad_stop_secs == 0.5
+    assert settings.vad_stop_secs == 0.4
     assert settings.vad_min_volume == 0.45
 
 

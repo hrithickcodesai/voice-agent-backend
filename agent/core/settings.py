@@ -38,14 +38,17 @@ class AgentSettings(BaseSettings):
     tts_model: str = "eleven_flash_v2_5"
     # stability is the main consistency dial: 0 = creative (expressive but
     # delivery drifts between sentences - confirmed in live testing), 1 =
-    # robust (flat but even). 0.55 sits in the natural band so every sentence
-    # sounds like the same person.
-    tts_stability: float = 0.55
+    # robust (flat but even). 0.5 keeps the natural-person band but leaves a
+    # little more emotional room than the old 0.55.
+    tts_stability: float = 0.5
     # style exaggerates the voice's inherent expressiveness; high style on top
     # of low stability is what made delivery swing wildly between sentences.
-    tts_style: float = 0.2
-    # speech speed multiplier (0.7-1.2 per elevenlabs v3 docs)
-    tts_speed: float = 1.0
+    # 0.2 read flat; 0.45 on top of the 0.5 stability floor pushes warmth and
+    # emphasis without going back to the swingy pair.
+    tts_style: float = 0.45
+    # speech speed multiplier (0.7-1.2 per elevenlabs v3 docs). 0.85: slow and
+    # clear but not dragging; user-tuned between 0.75 and 0.85
+    tts_speed: float = 0.85
     # 0-4, higher = lower latency at some pronunciation-accuracy cost. only
     # applied for models other than eleven_v3 (eleven_v3 rejects this param
     # outright with a 400). 2 instead of 3: for a tutor voice, pronouncing
@@ -73,13 +76,34 @@ class AgentSettings(BaseSettings):
 
     # vad (silero; pipecat defaults). the webrtc client's mic capture runs with
     # echo cancellation enabled, so the bot's own tts never reaches vad/stt and
-    # no server-side echo suppression is needed. stop/min_volume tuned for
-    # hesitant learners: a 0.2s silence cut utterances off mid-sentence and a
-    # 0.6 volume floor dropped soft speech entirely (both seen live).
+    # no server-side echo suppression is needed. min_volume tuned for hesitant
+    # learners: a 0.6 volume floor dropped soft speech entirely (seen live).
+    # stop sits at 0.4s: 0.2s cut utterances off mid-sentence (seen live) but
+    # 0.5s added 100ms of dead air before every single turn - 0.4 is the
+    # compromise; go back up if learners start getting cut off.
     vad_confidence: float = 0.7
     vad_start_secs: float = 0.2
-    vad_stop_secs: float = 0.5
+    vad_stop_secs: float = 0.4
     vad_min_volume: float = 0.45
+
+    # speculative replies: while the user is still speaking, stabilized stt
+    # partials drive background llm calls (SpeculationListener); at turn end
+    # the ready reply's first sentence plays instantly (SpeculationReplyGate)
+    # and the real llm call continues from that spoken prefix, its ttft hidden
+    # behind the opener audio. with no ready reply the turn runs the normal
+    # path unchanged. kill switch: set SPECULATION_ENABLED=false in .env.
+    speculation_enabled: bool = True
+    # speculation runs on a smaller, faster model than the pipeline llm: only
+    # its first sentence is ever spoken, the 70b continuation does the real
+    # work. the 8b on groq cuts speculation latency enough to win short turns.
+    speculation_model: str = "meta-llama/llama-3.1-8b-instruct"
+    speculation_min_words: int = 2
+    speculation_debounce_secs: float = 0.3
+    speculation_max_calls_per_turn: int = 3
+    # how long the gate may hold the kickoff frame waiting for an in-flight
+    # speculation to finish: bounded, so a miss costs at most this much on top
+    # of the normal path (which then runs from scratch)
+    speculation_max_wait_secs: float = 0.4
 
     # conversation history is capped to the last N user/assistant turns (plus
     # the system prompt) so long sessions don't grow the llm context forever.

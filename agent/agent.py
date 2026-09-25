@@ -19,11 +19,21 @@ from pipecat.services.elevenlabs.stt import (
 )
 from pipecat.services.elevenlabs.tts import ElevenLabsHttpTTSService
 from pipecat.transports.base_transport import BaseTransport
+from pipecat.turns.user_start import VADUserTurnStartStrategy
+from pipecat.turns.user_turn_strategies import (
+    UserTurnStrategies,
+    default_user_turn_stop_strategies,
+)
 
 from agent.core.settings import AgentSettings
-from agent.llm import OpenRouterLLMServiceNoThinking
+from agent.llm import OpenRouterLLMServiceNoThinking, SpeculationReplyClient
 from agent.processors.context_window import ContextWindowTrimmer
 from agent.processors.metrics import LatencyMonitor
+from agent.processors.speculative import (
+    SpeculationCache,
+    SpeculationListener,
+    SpeculationReplyGate,
+)
 from agent.processors.transcripts import TranscriptLogger
 from agent.processors.voice_tags import VoiceTagFilter
 from agent.prompts import build_system_prompt
@@ -43,11 +53,18 @@ def build_pipeline(
     try:
         logger.debug("building VAD analyzer")
         context = LLMContext()
-        # turn start/stop strategies are left at pipecat's defaults (vad +
-        # transcription to start, smart-turn analysis to stop). real barge-in
-        # works because the client captures the mic with echo cancellation
-        # enabled, so the bot never hears its own tts output.
+        # turn start: vad-only, turn stop: smart-turn analysis. the default
+        # transcription start strategy is actively harmful here - the stt
+        # sometimes emits a full-text partial after the committed transcript,
+        # which it treats as a new turn, and the broadcast interruption kills
+        # the llm reply that just started (seen live: no audio at all). vad
+        # already catches turn starts reliably; echo cancellation keeps the
+        # bot's own tts out of the analyzer.
         user_params = LLMUserAggregatorParams(
+            user_turn_strategies=UserTurnStrategies(
+                start=[VADUserTurnStartStrategy()],
+                stop=default_user_turn_stop_strategies(),
+            ),
             vad_analyzer=SileroVADAnalyzer(
                 params=VADParams(
                     confidence=settings.vad_confidence,
@@ -84,6 +101,7 @@ def build_pipeline(
         transcript_logger = TranscriptLogger()
 
         logger.debug("initializing LLM service with model={}", settings.llm_model)
+        system_prompt = build_system_prompt(settings)
         llm = OpenRouterLLMServiceNoThinking(
             api_key=settings.openrouter_api_key,
             provider_order=settings.llm_provider_order,
@@ -92,9 +110,52 @@ def build_pipeline(
                 temperature=settings.llm_temperature,
                 top_p=settings.llm_top_p,
                 max_tokens=settings.llm_max_tokens,
-                system_instruction=build_system_prompt(settings),
+                system_instruction=system_prompt,
             ),
         )
+
+        # speculative replies: the listener rides the stt partials (downstream
+        # of the aggregator they are consumed and lost), the gate sits in front
+        # of the llm service so it can splice a ready reply and swallow the
+        # kickoff frame. disabled = pipeline identical to before.
+        speculation_listener = None
+        speculation_gate = None
+        if settings.speculation_enabled:
+            common_client_args = {
+                "api_key": settings.openrouter_api_key,
+                "provider_order": settings.llm_provider_order,
+                "temperature": settings.llm_temperature,
+                "top_p": settings.llm_top_p,
+                "max_tokens": settings.llm_max_tokens,
+            }
+            speculation_cache = SpeculationCache()
+            # warm both connection pools now: the first speculation of a
+            # session otherwise pays ~1s of cold tls + ttft and always misses
+            fast_client = SpeculationReplyClient(
+                model=settings.speculation_model, **common_client_args
+            )
+            continuation_client = SpeculationReplyClient(
+                model=settings.llm_model, **common_client_args
+            )
+            fast_client.start_warmup()
+            continuation_client.start_warmup()
+            speculation_listener = SpeculationListener(
+                client=fast_client,
+                cache=speculation_cache,
+                context=context,
+                system_prompt=system_prompt,
+                min_words=settings.speculation_min_words,
+                debounce_secs=settings.speculation_debounce_secs,
+                max_calls_per_turn=settings.speculation_max_calls_per_turn,
+            )
+            # the continuation answers for real, so it runs on the pipeline
+            # model; only the spoken opener comes from the fast speculation
+            speculation_gate = SpeculationReplyGate(
+                client=continuation_client,
+                cache=speculation_cache,
+                system_prompt=system_prompt,
+                max_wait_secs=settings.speculation_max_wait_secs,
+            )
 
         logger.debug(
             "initializing TTS service with voice_id={}", settings.elevenlabs_voice_id
@@ -130,22 +191,22 @@ def build_pipeline(
         context_trimmer = ContextWindowTrimmer(max_turns=settings.context_max_turns)
 
         logger.debug("assembling pipeline")
-        pipeline = Pipeline(
-            [
-                transport.input(),
-                stt,
-                transcript_logger,
-                user_aggregator,
-                context_trimmer,
-                llm,
-                tag_guard,
-                tts,
-                tag_stripper,
-                transport.output(),
-                assistant_aggregator,
-                monitor,
-            ]
-        )
+        pipeline_frames: list = [transport.input(), stt]
+        if speculation_listener is not None:
+            pipeline_frames.append(speculation_listener)
+        pipeline_frames += [transcript_logger, user_aggregator, context_trimmer]
+        if speculation_gate is not None:
+            pipeline_frames.append(speculation_gate)
+        pipeline_frames += [
+            llm,
+            tag_guard,
+            tts,
+            tag_stripper,
+            transport.output(),
+            assistant_aggregator,
+            monitor,
+        ]
+        pipeline = Pipeline(pipeline_frames)
 
         worker = PipelineWorker(
             pipeline,
