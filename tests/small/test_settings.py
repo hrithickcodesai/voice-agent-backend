@@ -107,13 +107,45 @@ def test_settings_stt_is_verbatim_by_default():
     assert settings.stt_vad_silence_secs == 0.6
 
 
-def test_settings_vad_tuned_for_hesitant_speech():
-    """0.2s stop cut speakers off mid-sentence; 0.5s added 100ms of dead air
-    per turn. 0.4s is the latency/turn-taking compromise; volume floor guards
-    soft speech."""
+def test_settings_vad_tuned_for_noisy_hesitant_speech():
+    """confidence 0.7 never triggered turn starts under background noise
+    (silero probability drops below it); the volume floor guards soft speech
+    over noise. 0.2s stop cut speakers off mid-sentence; 0.5s added 100ms of
+    dead air per turn - 0.4s is the latency/turn-taking compromise."""
     settings = make_settings()
+    assert settings.vad_confidence == 0.55
     assert settings.vad_stop_secs == 0.4
-    assert settings.vad_min_volume == 0.45
+    assert settings.vad_min_volume == 0.35
+
+
+def test_settings_speculation_defaults():
+    """speculation runs on a small fast thinking-off model with no code-level
+    provider pin - .env decides routing and the session-start probe decides
+    reasoning (off where the api accepts, low where it rejects)."""
+    settings = make_settings()
+    assert settings.speculation_model == "openai/gpt-oss-120b"
+    assert settings.speculation_reasoning_effort is None
+    assert settings.speculation_provider_order == ()
+
+
+def test_settings_rejects_bad_speculation_reasoning_effort():
+    with pytest.raises(ValidationError):
+        make_settings(speculation_reasoning_effort="off")
+    with pytest.raises(ValidationError):
+        make_settings(speculation_reasoning_effort="maximum")
+
+
+def test_settings_llm_reasoning_effort_optional():
+    """unset = thinking-off requests (qwen/llama); set = reasoning effort."""
+    assert make_settings().llm_reasoning_effort is None
+    assert make_settings(llm_reasoning_effort="low").llm_reasoning_effort == "low"
+
+
+def test_settings_rejects_bad_llm_reasoning_effort():
+    with pytest.raises(ValidationError):
+        make_settings(llm_reasoning_effort="off")
+    with pytest.raises(ValidationError):
+        make_settings(llm_reasoning_effort="")
 
 
 def test_settings_rejects_out_of_range_stt_vad_silence():

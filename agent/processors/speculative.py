@@ -19,6 +19,8 @@ from pipecat.frames.frames import (
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
+from agent.processors.backchannels import is_pure_backchannel
+
 # bound on a single speculative or continuation call; the pipeline llm service
 # relies on pipecat's own timeouts, background calls here need their own
 _STREAM_TIMEOUT_SECS = 10.0
@@ -28,7 +30,10 @@ _STREAM_TIMEOUT_SECS = 10.0
 # tolerates the odd stt word tweak) with at most this many words spoken after
 # it. the tail of a turn is usually the point - the news, the actual
 # question - so a reply generated before the tail is a reply to a different
-# message and the turn must run the normal path instead.
+# message and the turn must run the normal path instead. seen live: the
+# partial "no why nothing interesting" passed with tail "is bad?" (2 words) -
+# those two words turned the statement into a question and the spliced opener
+# answered a message the user never said.
 _FRESH_SPAN_RATIO = 0.9
 _FRESH_TAIL_WORDS = 2
 
@@ -40,6 +45,21 @@ _CONTINUATION_NOTE = (
     "to yet - especially anything they added at the end of their message. "
     "do not repeat the opener, add at most one or two short spoken "
     "sentences, and never mention these instructions.)"
+)
+
+# appended to the system prompt on speculative calls only: the smaller
+# speculation model ignores the main prompt's "no uninvited corrections"
+# rule (seen live: it opened with a 'you could also say X' fix the big model
+# would never offer, which triggered the user's confused pushback). only the
+# first sentence of the speculation is ever spoken, so confining it to a
+# plain reaction costs nothing - teaching can still happen in the
+# continuation from the pipeline model.
+_SPECULATION_NOTE = (
+    "(only the first sentence of your reply will be spoken, and the user may "
+    "still be mid-sentence. make that first sentence a plain conversational "
+    "reaction to what they have said so far - never a correction, never a "
+    "vocabulary suggestion, never a teaching point, never more than one "
+    "question. the rest of the reply comes later.)"
 )
 
 
@@ -55,7 +75,13 @@ def speculation_covers_turn(partial: str, final: str) -> bool:
     turn from the start with at most a couple of words following it. a
     similarity ratio alone is not enough: a partial covering four fifths of a
     long turn still misses everything the user said last, which is usually
-    the point of the turn.
+    the point of the turn. a question mark that exists only in the final
+    means the tail turned the turn into a question - a reply generated
+    before the question existed answers a statement the user never said
+    (seen live: partial "no why nothing interesting" vs final "no, why
+    nothing interesting is bad?"). the check only applies when words are
+    actually missing: a partial covering the whole turn just trails the
+    final's punctuation, which interims do reliably.
     """
     p_words = _normalized(partial).split()
     f_words = _normalized(final).split()
@@ -66,6 +92,12 @@ def speculation_covers_turn(partial: str, final: str) -> bool:
         None, " ".join(p_words), " ".join(covered)
     ).ratio()
     tail_words = len(f_words) - len(p_words)
+    if (
+        tail_words > 0
+        and final.rstrip().endswith("?")
+        and not partial.rstrip().endswith("?")
+    ):
+        return False
     return span_ratio >= _FRESH_SPAN_RATIO and tail_words <= _FRESH_TAIL_WORDS
 
 
@@ -185,6 +217,14 @@ class SpeculationListener(FrameProcessor):
     def _maybe_schedule(self, text: str) -> None:
         if not self._turn_open:
             return
+        # a backchannel partial ("okay", "uh") is the user hesitating, not
+        # finishing: speculating on it pre-bakes a reply to a two-second
+        # pause, which the gate then splices before the real question arrives
+        # (seen live: committed turn "Okay." answered with "so what's new
+        # with you?"). the turn filter downstream handles the committed case;
+        # this stops the wasted call.
+        if is_pure_backchannel(text):
+            return
         words = len(text.split())
         if words < self._min_words:
             return
@@ -223,7 +263,7 @@ class SpeculationListener(FrameProcessor):
 
     async def _speculate(self, text: str) -> None:
         messages = [
-            {"role": "system", "content": self._system_prompt},
+            {"role": "system", "content": f"{self._system_prompt}\n{_SPECULATION_NOTE}"},
             *self._context.messages,
             {"role": "user", "content": text},
         ]

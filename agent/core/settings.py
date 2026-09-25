@@ -30,6 +30,13 @@ class AgentSettings(BaseSettings):
     llm_top_p: float = 0.95
     llm_max_tokens: int = 512
 
+    # reasoning effort for reasoning-only pipeline models (gpt-oss): when set,
+    # the openrouter request sends reasoning effort instead of thinking-off
+    # (gpt-oss cannot disable thinking; low is its floor). when unset, the
+    # model is probed at session start: thinking-off if the api accepts it,
+    # effort low if it rejects.
+    llm_reasoning_effort: str | None = None
+
     # tts (elevenlabs http convert). eleven_v3 is the only model that understands
     # inline [emotion] tags but has no low-latency mode and ~1.1-1.4s ttfb
     # (confirmed by direct measurement); flash/turbo have no tag support (they
@@ -78,13 +85,20 @@ class AgentSettings(BaseSettings):
     # echo cancellation enabled, so the bot's own tts never reaches vad/stt and
     # no server-side echo suppression is needed. min_volume tuned for hesitant
     # learners: a 0.6 volume floor dropped soft speech entirely (seen live).
+    # confidence 0.7 never triggered turn starts under background noise -
+    # silero's speech probability sits well below 0.7 when speech is mixed
+    # with road/ambient noise (seen live: agent waited, never replied). 0.55
+    # trades some false starts in noisy scenes for reliably catching speech;
+    # false starts cost only an stt round that returns nothing (smart-turn
+    # stop strategy still gates the actual turn end). go up if noise starts
+    # falsely interrupting the bot mid-reply.
     # stop sits at 0.4s: 0.2s cut utterances off mid-sentence (seen live) but
     # 0.5s added 100ms of dead air before every single turn - 0.4 is the
     # compromise; go back up if learners start getting cut off.
-    vad_confidence: float = 0.7
+    vad_confidence: float = 0.55
     vad_start_secs: float = 0.2
     vad_stop_secs: float = 0.4
-    vad_min_volume: float = 0.45
+    vad_min_volume: float = 0.35
 
     # speculative replies: while the user is still speaking, stabilized stt
     # partials drive background llm calls (SpeculationListener); at turn end
@@ -94,9 +108,21 @@ class AgentSettings(BaseSettings):
     # path unchanged. kill switch: set SPECULATION_ENABLED=false in .env.
     speculation_enabled: bool = True
     # speculation runs on a smaller, faster model than the pipeline llm: only
-    # its first sentence is ever spoken, the 70b continuation does the real
-    # work. the 8b on groq cuts speculation latency enough to win short turns.
-    speculation_model: str = "meta-llama/llama-3.1-8b-instruct"
+    # its first sentence is ever spoken, the pipeline continuation does the
+    # real work. gpt-oss-120b cannot disable reasoning; effort "low" is its
+    # floor and the fastest setting (the raw harmony <|channel|> prefill trick
+    # does not work through openrouter's chat api).
+    speculation_model: str = "openai/gpt-oss-120b"
+    # reasoning effort for the speculation model (openrouter reasoning param).
+    # only sent to the speculation client - the pipeline llm resolves its own.
+    # unset = probed at session start: thinking-off if the api accepts it,
+    # effort low if it rejects (reasoning-only models like gpt-oss).
+    speculation_reasoning_effort: str | None = None
+    # provider pin for the speculation model only: must be empty or name
+    # providers that actually serve it - the pipeline pin (novita/alibaba)
+    # serves qwen and would leave gpt-oss unroutable. empty = openrouter's
+    # default routing across all serving providers.
+    speculation_provider_order: tuple[str, ...] = ()
     speculation_min_words: int = 2
     speculation_debounce_secs: float = 0.3
     speculation_max_calls_per_turn: int = 3
@@ -234,6 +260,24 @@ class AgentSettings(BaseSettings):
     def validate_llm_top_p(cls, v: float) -> float:
         if not 0.0 < v <= 1.0:
             raise ValueError("llm_top_p must be between 0.0 and 1.0")
+        return v
+
+    @field_validator("llm_reasoning_effort")
+    @classmethod
+    def validate_llm_reasoning_effort(cls, v: str | None) -> str | None:
+        allowed = ("low", "medium", "high")
+        if v is not None and v not in allowed:
+            raise ValueError("llm_reasoning_effort must be one of: low, medium, high")
+        return v
+
+    @field_validator("speculation_reasoning_effort")
+    @classmethod
+    def validate_speculation_reasoning_effort(cls, v: str | None) -> str | None:
+        allowed = ("low", "medium", "high")
+        if v is not None and v not in allowed:
+            raise ValueError(
+                "speculation_reasoning_effort must be one of: low, medium, high"
+            )
         return v
 
     @field_validator("vad_confidence")

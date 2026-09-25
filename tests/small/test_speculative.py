@@ -106,6 +106,9 @@ async def test_listener_fills_cache_and_passes_frames_through():
     assert any(isinstance(f, InterimTranscriptionFrame) for f in sink.frames)
     # the speculative call saw history + the partial as the user turn
     assert client.calls[0][0]["role"] == "system"
+    # the speculation-only note rides along on the system message: the small
+    # speculation model must not spend its (only spoken) opener on corrections
+    assert "never a correction" in client.calls[0][0]["content"]
     assert client.calls[0][1] == {"role": "assistant", "content": "hi"}
     assert client.calls[0][2] == {"role": "user", "content": "hello there how are you"}
 
@@ -120,6 +123,26 @@ async def test_listener_ignores_short_partials():
 
     assert cache.reply is None
     assert client.calls == []
+
+
+async def test_listener_ignores_backchannel_partials():
+    """seen live: speculation on the partial "Okay" pre-baked small talk that
+    got spliced as the reply to a hesitation pause, while the learner's real
+    question was still coming. backchannel partials must not fire calls."""
+    client = FakeClient([["should never fire"]])
+    cache = SpeculationCache()
+    listener = make_listener(client, cache, LLMContext())
+    sink = FrameSink()
+    listener.link(sink)
+
+    await listener.process_frame(UserStartedSpeakingFrame(), DIRECTIONS)
+    await listener.process_frame(make_interim("Okay"), DIRECTIONS)
+    await drain()
+    await listener.process_frame(make_interim("Uh, um, okay"), DIRECTIONS)
+    await drain()
+
+    assert client.calls == []
+    assert cache.reply is None
 
 
 async def test_listener_respects_max_calls_per_turn():
@@ -449,6 +472,21 @@ def test_speculation_covers_turn_boundaries():
     assert not speculation_covers_turn(
         "there is nothing exciting happening uh",
         "There is nothing exciting happening. Uh, we're getting hit by a cyclone.",
+    )
+    # a question mark that exists only in the final means the tail turned the
+    # turn into a question - seen live: partial "no why nothing interesting"
+    # vs final "No, why nothing interesting is bad?", where the spliced
+    # opener answered a statement the user never said
+    assert not speculation_covers_turn(
+        "no why nothing interesting", "No, why nothing interesting is bad?"
+    )
+    # a partial that already saw the question stays fresh
+    assert speculation_covers_turn(
+        "no why nothing interesting is bad", "No, why nothing interesting is bad?"
+    )
+    # a question mid-turn does not trip the guard - only the final mark counts
+    assert speculation_covers_turn(
+        "what's up can you hear me for", "What's up? Can you hear me? for real"
     )
     # a speculation on a fraction of a long turn is stale
     assert not speculation_covers_turn(

@@ -33,7 +33,7 @@ async def bot(runner_args: RunnerArguments) -> None:
         # again. hold elevenlabs sockets open across turn gaps instead.
         connector = aiohttp.TCPConnector(keepalive_timeout=300)
         async with aiohttp.ClientSession(connector=connector) as http_session:
-            worker, context = build_pipeline(settings, transport, http_session)
+            worker, context = await build_pipeline(settings, transport, http_session)
             context.add_message({"role": "user", "content": "Start the session."})
             await worker.queue_frames([LLMRunFrame()])
 

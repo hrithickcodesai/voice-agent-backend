@@ -1,3 +1,5 @@
+import asyncio
+
 import aiohttp
 from loguru import logger
 from pipecat.audio.vad.silero import SileroVADAnalyzer
@@ -26,7 +28,12 @@ from pipecat.turns.user_turn_strategies import (
 )
 
 from agent.core.settings import AgentSettings
-from agent.llm import OpenRouterLLMServiceNoThinking, SpeculationReplyClient
+from agent.llm import (
+    OpenRouterLLMServiceNoThinking,
+    SpeculationReplyClient,
+    resolve_reasoning,
+)
+from agent.processors.backchannels import BackchannelTurnFilter
 from agent.processors.context_window import ContextWindowTrimmer
 from agent.processors.metrics import LatencyMonitor
 from agent.processors.speculative import (
@@ -39,7 +46,31 @@ from agent.processors.voice_tags import VoiceTagFilter
 from agent.prompts import build_system_prompt
 
 
-def build_pipeline(
+async def _resolve_reasoning_efforts(settings: AgentSettings) -> tuple[str | None, str | None]:
+    """reasoning effort per model: an explicit setting wins, otherwise one
+    tiny probe per model - off where the api accepts thinking-off, low where
+    it rejects. probes run concurrently; both calls resolve to the values
+    every llm client of the session then uses."""
+    async def resolve(model: str, provider_order: tuple[str, ...], effort: str | None):
+        if effort is not None:
+            return effort
+        return await resolve_reasoning(
+            api_key=settings.openrouter_api_key,
+            model=model,
+            provider_order=provider_order,
+        )
+
+    return await asyncio.gather(
+        resolve(settings.llm_model, settings.llm_provider_order, settings.llm_reasoning_effort),
+        resolve(
+            settings.speculation_model,
+            settings.speculation_provider_order,
+            settings.speculation_reasoning_effort,
+        ),
+    )
+
+
+async def build_pipeline(
     settings: AgentSettings,
     transport: BaseTransport,
     http_session: aiohttp.ClientSession,
@@ -102,9 +133,19 @@ def build_pipeline(
 
         logger.debug("initializing LLM service with model={}", settings.llm_model)
         system_prompt = build_system_prompt(settings)
+        # resolve reasoning handling once per model: an explicit effort wins,
+        # otherwise probe the api - thinking-off where accepted, effort low
+        # where rejected (reasoning-only models like gpt-oss)
+        llm_effort, speculation_effort = await _resolve_reasoning_efforts(settings)
+        logger.info(
+            "reasoning resolved: llm_effort={} speculation_effort={}",
+            llm_effort or "off",
+            speculation_effort or "off",
+        )
         llm = OpenRouterLLMServiceNoThinking(
             api_key=settings.openrouter_api_key,
             provider_order=settings.llm_provider_order,
+            reasoning_effort=llm_effort,
             settings=OpenRouterLLMServiceNoThinking.Settings(
                 model=settings.llm_model,
                 temperature=settings.llm_temperature,
@@ -123,19 +164,27 @@ def build_pipeline(
         if settings.speculation_enabled:
             common_client_args = {
                 "api_key": settings.openrouter_api_key,
-                "provider_order": settings.llm_provider_order,
                 "temperature": settings.llm_temperature,
                 "top_p": settings.llm_top_p,
                 "max_tokens": settings.llm_max_tokens,
             }
             speculation_cache = SpeculationCache()
             # warm both connection pools now: the first speculation of a
-            # session otherwise pays ~1s of cold tls + ttft and always misses
+            # session otherwise pays ~1s of cold tls + ttft and always misses.
+            # the fast client routes the speculation model across all of its
+            # serving providers (no pin) at its configured reasoning effort;
+            # the continuation client mirrors the pipeline llm exactly.
             fast_client = SpeculationReplyClient(
-                model=settings.speculation_model, **common_client_args
+                model=settings.speculation_model,
+                provider_order=settings.speculation_provider_order,
+                reasoning_effort=speculation_effort,
+                **common_client_args,
             )
             continuation_client = SpeculationReplyClient(
-                model=settings.llm_model, **common_client_args
+                model=settings.llm_model,
+                provider_order=settings.llm_provider_order,
+                reasoning_effort=llm_effort,
+                **common_client_args,
             )
             fast_client.start_warmup()
             continuation_client.start_warmup()
@@ -187,6 +236,9 @@ def build_pipeline(
             settings.voice_tags, strip=not settings.uses_emotion_tags()
         )
         tag_stripper = VoiceTagFilter(settings.voice_tags, strip=True)
+        # backchannel-only turns ("Okay.", "Uh-") get silence instead of a
+        # fabricated reply; the real turn the learner speaks next gets answered
+        backchannel_filter = BackchannelTurnFilter()
         monitor = LatencyMonitor()
         context_trimmer = ContextWindowTrimmer(max_turns=settings.context_max_turns)
 
@@ -194,7 +246,12 @@ def build_pipeline(
         pipeline_frames: list = [transport.input(), stt]
         if speculation_listener is not None:
             pipeline_frames.append(speculation_listener)
-        pipeline_frames += [transcript_logger, user_aggregator, context_trimmer]
+        pipeline_frames += [
+            transcript_logger,
+            user_aggregator,
+            backchannel_filter,
+            context_trimmer,
+        ]
         if speculation_gate is not None:
             pipeline_frames.append(speculation_gate)
         pipeline_frames += [
