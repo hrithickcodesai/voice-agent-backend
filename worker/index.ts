@@ -56,9 +56,12 @@ export class VoiceAgentContainer extends Container<Env> {
     return super.fetch(request);
   }
 
+  // SIGKILL, not stop()'s SIGTERM: on SIGTERM uvicorn waits for background
+  // tasks to finish, and a live call *is* one, so the container would keep
+  // running until the caller hung up (verified locally).
   async endCallAtLimit(): Promise<void> {
-    console.log("call reached MAX_CALL_MINUTES, stopping container");
-    await this.stop();
+    console.log("call reached MAX_CALL_MINUTES, destroying container");
+    await this.destroy();
   }
 
   // The default stops the container once sleepAfter passes without a request
@@ -70,6 +73,11 @@ export class VoiceAgentContainer extends Container<Env> {
     const startedAt = await this.ctx.storage.get<number>("callStartedAt");
     if (startedAt && Date.now() - startedAt < this.maxCallMs() + 60_000) {
       this.renewActivityTimeout();
+      return;
+    }
+    if (startedAt) {
+      // past the cap and still running: force it (see endCallAtLimit)
+      await this.destroy();
       return;
     }
     await super.onActivityExpired();

@@ -12,6 +12,7 @@ export interface ApiEnv {
   DB: D1Database;
   GOOGLE_CLIENT_ID: string;
   SESSION_SECRET: string;
+  MAX_CALL_MINUTES?: string;
 }
 
 // Sign-in is only enforced once a Google client id is configured, so the
@@ -253,6 +254,9 @@ export async function handleApi(request: Request, env: ApiEnv, url: URL): Promis
       authEnabled: authEnabled(env),
       googleClientId: env.GOOGLE_CLIENT_ID || null,
       phoneScope: PHONE_SCOPE,
+      // the UI hangs up cleanly at this limit; the container is also killed
+      // server-side at the same point as a backstop
+      maxCallMinutes: Number(env.MAX_CALL_MINUTES) || null,
     });
   }
   if (!authEnabled(env)) return json(404, { error: "sign-in is not configured" });

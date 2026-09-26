@@ -1137,6 +1137,7 @@
         : reason === "Call Failed" ? "failed"
         : connectedScreenShown ? "completed" : "cancelled");
       finishCallLog(status);
+      clearTimeout(callCapTimer);
       stopRingback();
       stopTimer();
       talkingHead?.stop();
@@ -1172,6 +1173,10 @@
       callActive = true;
       isVideoCall = video;
       startCallLog(video);
+      // counted from dialling, slightly before the server's own cap (which
+      // starts at the WebRTC offer), so this clean hang-up always wins
+      clearTimeout(callCapTimer);
+      if (maxCallMinutes) callCapTimer = setTimeout(() => endCall("Call Ended"), maxCallMinutes * 60000);
       connectedScreenShown = false;
       muted = false;
       speakerOn = false;
@@ -1335,6 +1340,11 @@
     // locally (python dev server) there is no /api, so it stays off and calls
     // work anonymously without a call log.
     let authEnabled = false;
+    // MAX_CALL_MINUTES from the server: hang up cleanly at the limit. The
+    // server also kills the call container then, but a killed connection
+    // takes ~30s to be noticed here, so the client ends it itself.
+    let maxCallMinutes = null;
+    let callCapTimer = null;
     let currentUser = null;
     async function api(path, options = {}) {
       const res = await fetch(path, {
@@ -1679,6 +1689,7 @@
         authEnabled = Boolean(cfg.authEnabled);
         googleClientId = cfg.googleClientId;
         phoneScope = cfg.phoneScope;
+        maxCallMinutes = cfg.maxCallMinutes;
       } catch {
         authEnabled = false; // local dev server: no /api
       }
