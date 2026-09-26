@@ -159,7 +159,7 @@ async function createCall(request: Request, env: ApiEnv, userId: string): Promis
   const kind = body?.kind === "facetime" ? "facetime" : "audio";
   const id = crypto.randomUUID();
   await env.DB.prepare(
-    `INSERT INTO calls (id, user_id, kind, status, started_at) VALUES (?1, ?2, ?3, 'active', ?4)`
+    `INSERT INTO calls (id, user_id, kind, status, started_at, updated_at) VALUES (?1, ?2, ?3, 'active', ?4, ?4)`
   )
     .bind(id, userId, kind, Date.now())
     .run();
@@ -208,7 +208,8 @@ async function updateCall(request: Request, env: ApiEnv, userId: string, callId:
       `UPDATE calls SET
          status = COALESCE(?1, status),
          duration_s = COALESCE(?2, duration_s),
-         ended_at = CASE WHEN ?3 THEN ?4 ELSE ended_at END
+         ended_at = CASE WHEN ?3 THEN ?4 ELSE ended_at END,
+         updated_at = ?4
        WHERE id = ?5`
     ).bind(status, duration, body.ended ? 1 : 0, Date.now(), callId)
   );

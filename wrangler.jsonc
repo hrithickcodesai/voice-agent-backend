@@ -11,7 +11,9 @@
     "AGENT_NAME": "Alex",
     // Google OAuth web client id (public). Empty = sign-in disabled, calls
     // stay anonymous and there is no call log.
-    "GOOGLE_CLIENT_ID": "864010877288-dn88e587ihgpt4r9urhikj26ip1ns347.apps.googleusercontent.com"
+    "GOOGLE_CLIENT_ID": "864010877288-dn88e587ihgpt4r9urhikj26ip1ns347.apps.googleusercontent.com",
+    // who can open /admin (must also be signed in with Google), comma-separated
+    "ADMIN_EMAILS": "thomas.b@launchventures.co"
   },
   // users, calls and call transcripts (Recents)
   "d1_databases": [

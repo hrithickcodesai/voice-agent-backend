@@ -1,8 +1,9 @@
 import { Container } from "@cloudflare/containers";
+import { checkAdmin, handleAdminApi, type AdminEnv } from "./admin";
 import { authEnabled, handleApi, type ApiEnv } from "./api";
 import { sessionUserId } from "./auth";
 
-interface Env extends ApiEnv {
+interface Env extends ApiEnv, AdminEnv {
   VOICE_AGENT_CONTAINER: DurableObjectNamespace<VoiceAgentContainer>;
   ASSETS: Fetcher;
   ELEVENLABS_API_KEY: string;
@@ -110,6 +111,25 @@ export default {
     if (url.pathname === "/" || url.pathname === "/ui") {
       return Response.redirect(new URL("/ui/", url).toString(), 302);
     }
+    // Admin panel: signed in with Google AND email in ADMIN_EMAILS. The page
+    // itself holds no data (it all comes from /api/admin/*, which checks
+    // again), but it's still only served to admins.
+    if (url.pathname === "/admin" || url.pathname === "/admin/") {
+      const auth = await checkAdmin(request, env);
+      if (!auth.ok && auth.reason === "signed_out") {
+        return Response.redirect(new URL("/ui/?next=/admin", url).toString(), 302);
+      }
+      if (!auth.ok) {
+        return new Response("This Google account isn't an admin.", {
+          status: 403,
+          headers: { "Content-Type": "text/plain; charset=utf-8" },
+        });
+      }
+      return env.ASSETS.fetch(new Request(new URL("/admin/", url), request));
+    }
+    if (url.pathname.startsWith("/api/admin/")) return handleAdminApi(request, env, url);
+    if (url.pathname.startsWith("/ui/admin")) return json(404, { error: "Not found" });
+
     if (url.pathname.startsWith("/ui/")) {
       const assetUrl = new URL(url.pathname.slice("/ui".length) + url.search, url);
       return env.ASSETS.fetch(new Request(assetUrl, request));

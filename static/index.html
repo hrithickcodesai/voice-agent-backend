@@ -1381,6 +1381,12 @@
     }
     function signedIn(user) {
       currentUser = user;
+      // came here from /admin to sign in: go back (only that exact path, so
+      // ?next= can't be used as an open redirect)
+      if (new URLSearchParams(location.search).get("next") === "/admin") {
+        location.href = "/admin";
+        return;
+      }
       const card = document.getElementById("my-card");
       card.hidden = false;
       document.getElementById("my-card-name").textContent = user.name || user.email;
@@ -1460,10 +1466,12 @@
     });
 
     // ---------------- call log ----------------
-    // A call record is created when dialling starts, and the full transcript
-    // is re-saved every few seconds while it changes, then once more on hang
-    // up - so a call cut off (e.g. iOS killing the tab) keeps its transcript.
-    let callLog = null; // { idPromise, dirty, timer }
+    // A call record is created when dialling starts. The full transcript is
+    // re-saved ~2s after each new line (so the admin panel can follow calls
+    // live) plus a 10s heartbeat that marks the call as still live, and once
+    // more on hang up - so a call cut off (e.g. iOS killing the tab) keeps
+    // its transcript.
+    let callLog = null; // { idPromise, dirty, timer, debounce }
     function startCallLog(video) {
       callLog = null;
       if (!authEnabled || !currentUser) return;
@@ -1474,11 +1482,15 @@
           console.warn("could not create call log entry", e);
           return null;
         });
-      log.timer = setInterval(() => log.dirty && saveCallLog(log, {}), 10000);
+      log.timer = setInterval(() => saveCallLog(log, {}), 10000); // heartbeat
       callLog = log;
     }
     function markCallDirty() {
-      if (callLog) callLog.dirty = true;
+      const log = callLog;
+      if (!log) return;
+      log.dirty = true;
+      clearTimeout(log.debounce);
+      log.debounce = setTimeout(() => log.dirty && callLog === log && saveCallLog(log, {}), 2000);
     }
     async function saveCallLog(log, extra, { keepalive = false } = {}) {
       const id = await log.idPromise;
@@ -1498,6 +1510,7 @@
       if (!log) return;
       callLog = null;
       clearInterval(log.timer);
+      clearTimeout(log.debounce);
       // snapshot now: captions are cleared right after this
       const messages = transcriptMessages();
       const duration = callSeconds;

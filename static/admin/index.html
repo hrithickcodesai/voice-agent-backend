@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Alex Admin</title>
+  <style>
+    :root {
+      --bg: #f5f5f7; --card: #fff; --text: #1d1d1f; --muted: #6e6e73; --line: #e5e5ea;
+      --accent: #0a84ff; --live: #ff3b30; --ok: #34c759; --bar: #0a84ff;
+      color-scheme: light dark;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #000; --card: #1c1c1e; --text: #f5f5f7; --muted: #8e8e93; --line: #2c2c2e; }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.4 -apple-system, BlinkMacSystemFont, system-ui, sans-serif; }
+    header { display: flex; align-items: center; gap: 1rem; padding: 1rem 1.25rem; flex-wrap: wrap; }
+    header h1 { font-size: 1.25rem; margin: 0; }
+    .who { color: var(--muted); font-size: 0.85rem; margin-left: auto; }
+    nav { display: flex; gap: 0.35rem; padding: 0 1.25rem; flex-wrap: wrap; }
+    nav button, .seg button {
+      border: 1px solid var(--line); background: var(--card); color: var(--text);
+      padding: 0.4rem 0.9rem; border-radius: 999px; font: inherit; cursor: pointer;
+    }
+    nav button.on, .seg button.on { background: var(--text); color: var(--bg); border-color: var(--text); }
+    main { padding: 1rem 1.25rem 3rem; max-width: 1100px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.75rem; margin-bottom: 0.75rem; }
+    .card { background: var(--card); border-radius: 14px; padding: 0.9rem 1rem; }
+    .card .label { color: var(--muted); font-size: 0.8rem; }
+    .card .value { font-size: 1.7rem; font-weight: 650; margin-top: 0.15rem; }
+    .card .sub { color: var(--muted); font-size: 0.8rem; }
+    h2 { font-size: 1rem; margin: 1.4rem 0 0.6rem; }
+    .row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.6rem; }
+    .seg { display: flex; gap: 0.3rem; }
+    .spacer { flex: 1; }
+    svg.chart { width: 100%; height: 240px; display: block; }
+    svg.chart text { fill: var(--muted); font-size: 11px; }
+    .table-wrap { background: var(--card); border-radius: 14px; overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    th, td { text-align: left; padding: 0.6rem 0.8rem; border-bottom: 1px solid var(--line); white-space: nowrap; }
+    th { color: var(--muted); font-weight: 500; font-size: 0.8rem; }
+    tr.click { cursor: pointer; }
+    tr.click:hover td { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+    .user { display: flex; align-items: center; gap: 0.55rem; }
+    .avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--line); object-fit: cover; flex-shrink: 0; }
+    .muted { color: var(--muted); }
+    .badge { display: inline-block; padding: 0.05rem 0.5rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
+    .badge.live { background: var(--live); color: #fff; }
+    .badge.completed { background: color-mix(in srgb, var(--ok) 20%, transparent); color: var(--ok); }
+    .badge.other { background: var(--line); color: var(--muted); }
+    .empty { color: var(--muted); padding: 1.5rem 1rem; text-align: center; }
+    .more { margin-top: 0.8rem; }
+    .btn { border: 1px solid var(--line); background: var(--card); color: var(--text); padding: 0.45rem 1rem; border-radius: 10px; font: inherit; cursor: pointer; }
+    /* transcript drawer */
+    #drawer { position: fixed; inset: 0; background: rgba(0,0,0,0.35); display: none; }
+    #drawer.open { display: block; }
+    #panel {
+      position: absolute; right: 0; top: 0; bottom: 0; width: min(520px, 100%);
+      background: var(--bg); display: flex; flex-direction: column; box-shadow: -8px 0 30px rgba(0,0,0,0.2);
+    }
+    #panel-head { padding: 1rem 1.1rem; border-bottom: 1px solid var(--line); display: flex; gap: 0.7rem; align-items: flex-start; }
+    #panel-head .title { font-weight: 600; }
+    #panel-body { flex: 1; overflow-y: auto; padding: 1rem 1.1rem; display: flex; flex-direction: column; gap: 0.6rem; }
+    .msg { max-width: 85%; padding: 0.55rem 0.8rem; border-radius: 14px; background: var(--card); }
+    .msg.user { align-self: flex-end; background: var(--accent); color: #fff; }
+    .msg .role { font-size: 0.7rem; font-weight: 600; opacity: 0.7; margin-bottom: 0.1rem; }
+    .close { margin-left: auto; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Alex Admin</h1>
+    <span class="who" id="who"></span>
+  </header>
+  <nav id="tabs">
+    <button data-tab="overview" class="on">Overview</button>
+    <button data-tab="live">Live</button>
+    <button data-tab="calls">Calls</button>
+    <button data-tab="users">Users</button>
+  </nav>
+  <main id="main"></main>
+
+  <div id="drawer">
+    <div id="panel">
+      <div id="panel-head">
+        <div>
+          <div class="title" id="panel-title"></div>
+          <div class="muted" id="panel-sub"></div>
+        </div>
+        <button class="btn close" id="panel-close">Close</button>
+      </div>
+      <div id="panel-body"></div>
+    </div>
+  </div>
+
+  <script>
+    const main = document.getElementById("main");
+    const TZ = -new Date().getTimezoneOffset();
+
+    async function api(path) {
+      const res = await fetch(path, { credentials: "same-origin" });
+      if (res.status === 401) { location.href = "/ui/?next=/admin"; throw new Error("signed out"); }
+      if (!res.ok) throw new Error(`${path}: ${res.status}`);
+      return res.json();
+    }
+
+    // tiny DOM helper: el("div", {class: "x"}, "text", child, ...)
+    function el(tag, attrs = {}, ...children) {
+      const n = document.createElement(tag);
+      for (const [k, v] of Object.entries(attrs)) {
+        if (k === "class") n.className = v;
+        else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
+        else if (v != null) n.setAttribute(k, v);
+      }
+      for (const c of children.flat()) if (c != null) n.append(c instanceof Node ? c : String(c));
+      return n;
+    }
+
+    const fmtNum = (n) => Number(n || 0).toLocaleString();
+    const fmtMins = (s) => (s >= 3600 ? `${(s / 3600).toFixed(1)} h` : `${Math.round((s || 0) / 60)} min`);
+    const fmtDur = (s) => { s = s || 0; const m = Math.floor(s / 60); return m ? `${m}m ${s % 60}s` : `${s}s`; };
+    const fmtTime = (ms) => (ms ? new Date(ms).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : "—");
+    function ago(ms) {
+      if (!ms) return "never";
+      const s = Math.round((Date.now() - ms) / 1000);
+      if (s < 60) return "just now";
+      if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+      if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+      return `${Math.floor(s / 86400)}d ago`;
+    }
+    function userCell(u) {
+      return el("div", { class: "user" },
+        u.picture ? el("img", { class: "avatar", src: u.picture, referrerpolicy: "no-referrer", alt: "" }) : el("span", { class: "avatar" }),
+        el("div", {}, el("div", {}, u.name || u.email), el("div", { class: "muted" }, u.name ? u.email : "")));
+    }
+    let liveWindowMs = 45000;
+    const isLive = (c) => c.status === "active" && Date.now() - (c.updated_at || 0) < liveWindowMs;
+    function statusBadge(c) {
+      if (isLive(c)) return el("span", { class: "badge live" }, "LIVE");
+      const s = c.status === "active" ? "dropped" : c.status;
+      return el("span", { class: "badge " + (s === "completed" ? "completed" : "other") }, s);
+    }
+
+    // ---------- tabs ----------
+    let timers = [];
+    function clearTimers() { timers.forEach(clearInterval); timers = []; }
+    const TABS = { overview: renderOverview, live: renderLive, calls: renderCalls, users: renderUsers };
+    function show(tab, arg) {
+      clearTimers();
+      for (const b of document.querySelectorAll("#tabs button")) b.classList.toggle("on", b.dataset.tab === tab);
+      main.replaceChildren(el("div", { class: "muted" }, "Loading…"));
+      TABS[tab](arg).catch((e) => main.replaceChildren(el("div", { class: "empty" }, e.message)));
+    }
+    document.getElementById("tabs").addEventListener("click", (e) => e.target.dataset.tab && show(e.target.dataset.tab));
+
+    // ---------- overview ----------
+    let chartRange = "7d", chartMetric = "users";
+    async function renderOverview() {
+      const o = await api("/api/admin/overview");
+      const card = (label, value, sub) => el("div", { class: "card" },
+        el("div", { class: "label" }, label), el("div", { class: "value" }, value), sub ? el("div", { class: "sub" }, sub) : null);
+      main.replaceChildren(
+        el("div", { class: "grid" },
+          card("Users", fmtNum(o.users.total), `+${fmtNum(o.users.new_24h)} today · +${fmtNum(o.users.new_7d)} this week`),
+          card("Live calls", fmtNum(o.liveCalls), "right now"),
+          card("Calls", fmtNum(o.calls.total), `${fmtNum(o.calls.calls_24h)} in last 24h`),
+          card("Talk time", fmtMins(o.calls.seconds), `${fmtMins(o.calls.seconds_24h)} in last 24h`)),
+        el("h2", {}, "Unique users (made a call)"),
+        el("div", { class: "grid" },
+          card("Last 24 hours", fmtNum(o.uniqueUsers.d)),
+          card("Last 7 days", fmtNum(o.uniqueUsers.w)),
+          card("Last 30 days", fmtNum(o.uniqueUsers.m)),
+          card("Last year", fmtNum(o.uniqueUsers.y))),
+        el("h2", {}, "Usage over time"),
+        el("div", { class: "card" },
+          el("div", { class: "row" },
+            segmented(["24h", "7d", "30d", "1y"], chartRange, (v) => { chartRange = v; drawChart(); }),
+            el("span", { class: "spacer" }),
+            segmented([["users", "Unique users"], ["calls", "Calls"], ["minutes", "Minutes"]], chartMetric, (v) => { chartMetric = v; drawChart(); })),
+          el("div", { id: "chart" })));
+      drawChart();
+      timers.push(setInterval(async () => {
+        const fresh = await api("/api/admin/overview").catch(() => null);
+        if (fresh && document.querySelector("#tabs .on").dataset.tab === "overview") {
+          main.querySelector(".grid .card:nth-child(2) .value").textContent = fmtNum(fresh.liveCalls);
+        }
+      }, 10000));
+    }
+    function segmented(options, current, onPick) {
+      const wrap = el("div", { class: "seg" });
+      for (const o of options) {
+        const [value, label] = Array.isArray(o) ? o : [o, o];
+        wrap.append(el("button", { class: value === current ? "on" : "", onclick: () => {
+          for (const b of wrap.children) b.classList.remove("on");
+          wrap.querySelector(`[data-v="${value}"]`).classList.add("on");
+          onPick(value);
+        }, "data-v": value }, label));
+      }
+      return wrap;
+    }
+
+    // expected buckets for the range, in local time, matching the server's
+    // strftime format so empty periods still show as zero bars
+    function expectedBuckets(range) {
+      const pad = (n) => String(n).padStart(2, "0");
+      const day = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+      const out = [], now = new Date();
+      if (range === "24h") {
+        for (let i = 23; i >= 0; i--) {
+          const d = new Date(now.getTime() - i * 3600000);
+          out.push({ key: `${day(d)} ${pad(d.getHours())}:00`, label: `${pad(d.getHours())}:00` });
+        }
+      } else if (range === "1y") {
+        for (let i = 11; i >= 0; i--) {
+          const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+          out.push({ key: `${d.getFullYear()}-${pad(d.getMonth() + 1)}`, label: d.toLocaleDateString([], { month: "short" }) });
+        }
+      } else {
+        const n = range === "7d" ? 7 : 30;
+        for (let i = n - 1; i >= 0; i--) {
+          const d = new Date(now.getTime() - i * 86400000);
+          out.push({ key: day(d), label: d.toLocaleDateString([], { day: "numeric", month: "short" }) });
+        }
+      }
+      return out;
+    }
+    async function drawChart() {
+      const box = document.getElementById("chart");
+      if (!box) return;
+      const { buckets } = await api(`/api/admin/usage?range=${chartRange}&tz=${TZ}`);
+      const byKey = Object.fromEntries(buckets.map((b) => [b.bucket, b]));
+      const data = expectedBuckets(chartRange).map((b) => ({ ...b, v: Number(byKey[b.key]?.[chartMetric] || 0) }));
+      const W = 900, H = 240, L = 36, B = 26, T = 10;
+      const max = Math.max(1, ...data.map((d) => d.v));
+      const step = (W - L) / data.length;
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+      svg.setAttribute("class", "chart");
+      svg.setAttribute("preserveAspectRatio", "none");
+      const ns = (tag, attrs, text) => {
+        const n = document.createElementNS("http://www.w3.org/2000/svg", tag);
+        for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
+        if (text != null) n.textContent = text;
+        svg.append(n);
+        return n;
+      };
+      for (const f of [0, 0.5, 1]) {
+        const y = T + (H - B - T) * (1 - f);
+        ns("line", { x1: L, x2: W, y1: y, y2: y, stroke: "currentColor", "stroke-opacity": 0.12 });
+        ns("text", { x: L - 6, y: y + 4, "text-anchor": "end" }, chartMetric === "minutes" ? Math.round(max * f) : Math.round(max * f));
+      }
+      const labelEvery = Math.ceil(data.length / 8);
+      data.forEach((d, i) => {
+        const h = ((H - B - T) * d.v) / max;
+        const x = L + i * step + step * 0.15;
+        const bar = ns("rect", { x, y: H - B - h, width: step * 0.7, height: Math.max(h, d.v ? 1 : 0), rx: 3, fill: "var(--bar)" });
+        const t = document.createElementNS("http://www.w3.org/2000/svg", "title");
+        t.textContent = `${d.label}: ${d.v}`;
+        bar.append(t);
+        if (i % labelEvery === 0) ns("text", { x: x + step * 0.35, y: H - 8, "text-anchor": "middle" }, d.label);
+      });
+      box.replaceChildren(svg);
+    }
+
+    // ---------- live ----------
+    async function renderLive() {
+      const draw = async () => {
+        const { calls } = await api("/api/admin/live");
+        if (document.querySelector("#tabs .on").dataset.tab !== "live") return;
+        main.replaceChildren(
+          el("div", { class: "row" }, el("h2", { style: "margin:0" }, `Live calls (${calls.length})`), el("span", { class: "spacer" }),
+            el("span", { class: "muted" }, "updates every 5s")),
+          calls.length ? callsTable(calls, { live: true }) : el("div", { class: "card empty" }, "No one is on a call right now."));
+      };
+      await draw();
+      timers.push(setInterval(draw, 5000));
+    }
+
+    // ---------- past calls ----------
+    async function renderCalls(filterUser) {
+      const rows = [];
+      const table = el("div");
+      const moreBtn = el("button", { class: "btn more", onclick: () => load() }, "Load more");
+      const load = async () => {
+        const before = rows.length ? rows[rows.length - 1].started_at : "";
+        const q = new URLSearchParams({ before });
+        if (filterUser) q.set("user", filterUser.id);
+        const res = await api(`/api/admin/calls?${q}`);
+        liveWindowMs = res.liveWindowMs || liveWindowMs;
+        rows.push(...res.calls);
+        table.replaceChildren(rows.length ? callsTable(rows) : el("div", { class: "card empty" }, "No calls yet."));
+        moreBtn.hidden = res.calls.length < 50;
+      };
+      main.replaceChildren(
+        el("div", { class: "row" },
+          el("h2", { style: "margin:0" }, filterUser ? `Calls by ${filterUser.name || filterUser.email}` : "All calls"),
+          el("span", { class: "spacer" }),
+          filterUser ? el("button", { class: "btn", onclick: () => show("calls") }, "Show everyone") : null),
+        table, moreBtn);
+      await load();
+    }
+
+    function callsTable(calls, { live = false } = {}) {
+      const body = calls.map((c) => el("tr", { class: "click", onclick: () => openCall(c.id) },
+        el("td", {}, userCell(c)),
+        el("td", {}, c.kind === "facetime" ? "FaceTime" : "Audio"),
+        el("td", {}, statusBadge(c)),
+        el("td", {}, live ? `started ${ago(c.started_at)}` : fmtTime(c.started_at)),
+        el("td", {}, fmtDur(c.duration_s)),
+        el("td", { class: "muted" }, `${c.lines} lines`)));
+      return el("div", { class: "table-wrap" }, el("table", {},
+        el("thead", {}, el("tr", {}, ["User", "Type", "Status", live ? "Started" : "When", "Duration", "Transcript"].map((h) => el("th", {}, h)))),
+        el("tbody", {}, body)));
+    }
+
+    // ---------- users ----------
+    async function renderUsers() {
+      const { users } = await api("/api/admin/users");
+      const body = users.map((u) => el("tr", { class: "click", onclick: () => show("calls", u) },
+        el("td", {}, userCell(u)),
+        el("td", {}, u.phone_number || el("span", { class: "muted" }, "—")),
+        el("td", {}, fmtTime(u.created_at)),
+        el("td", {}, ago(u.last_call_at)),
+        el("td", {}, fmtNum(u.calls)),
+        el("td", {}, fmtMins(u.seconds))));
+      main.replaceChildren(
+        el("h2", { style: "margin-top:0" }, `Users (${users.length})`),
+        users.length
+          ? el("div", { class: "table-wrap" }, el("table", {},
+              el("thead", {}, el("tr", {}, ["User", "Phone", "Joined", "Last call", "Calls", "Talk time"].map((h) => el("th", {}, h)))),
+              el("tbody", {}, body)))
+          : el("div", { class: "card empty" }, "No users yet."));
+    }
+
+    // ---------- transcript drawer (polls while the call is live) ----------
+    const drawer = document.getElementById("drawer");
+    let drawerTimer = null;
+    async function openCall(id) {
+      drawer.classList.add("open");
+      const body = document.getElementById("panel-body");
+      body.replaceChildren(el("div", { class: "muted" }, "Loading…"));
+      clearInterval(drawerTimer);
+      let lastCount = -1;
+      const refresh = async () => {
+        const { call, messages, liveWindowMs: w } = await api(`/api/admin/calls/${id}`);
+        liveWindowMs = w || liveWindowMs;
+        const live = isLive(call);
+        document.getElementById("panel-title").replaceChildren(call.name || call.email, " ", statusBadge(call));
+        document.getElementById("panel-sub").textContent =
+          `${call.kind === "facetime" ? "FaceTime" : "Audio"} · ${fmtTime(call.started_at)} · ${fmtDur(call.duration_s)}`;
+        if (messages.length !== lastCount) {
+          const atBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 60;
+          body.replaceChildren(...(messages.length
+            ? messages.map((m) => el("div", { class: "msg " + (m.role === "user" ? "user" : "") },
+                el("div", { class: "role" }, m.role === "user" ? call.name || "User" : "Alex"), el("div", {}, m.text)))
+            : [el("div", { class: "muted" }, live ? "Waiting for the first words…" : "No transcript for this call.")]));
+          if (atBottom || lastCount === -1) body.scrollTop = body.scrollHeight;
+          lastCount = messages.length;
+        }
+        if (!live) clearInterval(drawerTimer);
+      };
+      await refresh();
+      drawerTimer = setInterval(refresh, 3000);
+    }
+    function closeDrawer() { drawer.classList.remove("open"); clearInterval(drawerTimer); }
+    document.getElementById("panel-close").addEventListener("click", closeDrawer);
+    drawer.addEventListener("click", (e) => e.target === drawer && closeDrawer());
+
+    api("/api/admin/me").then((me) => (document.getElementById("who").textContent = me.email)).catch(() => {});
+    show("overview");
+  </script>
+</body>
+</html>
