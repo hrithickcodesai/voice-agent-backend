@@ -1,21 +1,32 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
+  // Top level = preprod (`wrangler deploy`, ./deploy-preprod.sh).
+  // "env.prod" below = prod (`wrangler deploy --env prod`, ./deploy-prod.sh).
   "name": "preprod-voice-agent",
   "account_id": "096aa2e876fca5b89eaea5d2de970ea8",
   "main": "worker/index.ts",
   "compatibility_date": "2026-09-23",
   "observability": { "enabled": true },
-  // non-secret agent config, forwarded into the container as env vars
   "vars": {
+    // agent config, forwarded into the call container
     "LLM_MODEL": "qwen/qwen3.5-122b-a10b",
     "AGENT_NAME": "Alex",
     // Google OAuth web client id (public). Empty = sign-in disabled, calls
     // stay anonymous and there is no call log.
     "GOOGLE_CLIENT_ID": "864010877288-dn88e587ihgpt4r9urhikj26ip1ns347.apps.googleusercontent.com",
     // who can open /admin (must also be signed in with Google), comma-separated
-    "ADMIN_EMAILS": "thomas.b@launchventures.co"
+    "ADMIN_EMAILS": "thomas.b@launchventures.co",
+
+    // ---- scaling & cost switches (see also containers.max_instances) ----
+    // "false" = stop accepting new calls immediately (maintenance / cost
+    // emergency); calls already in progress carry on
+    "CALLS_ENABLED": "true",
+    // hard cap on one call's length, in minutes
+    "MAX_CALL_MINUTES": "30",
+    // talk time allowed per signed-in user per rolling 24h, in minutes; 0 = unlimited
+    "DAILY_MINUTES_PER_USER": "0"
   },
-  // users, calls and call transcripts (Recents)
+  // users, calls and call transcripts (Recents, admin panel)
   "d1_databases": [
     {
       "binding": "DB",
@@ -29,10 +40,16 @@
     "binding": "ASSETS",
     "run_worker_first": true
   },
+  // Autoscaling: every call gets its own container, started when the call
+  // starts and stopped when it ends - zero containers when nobody is
+  // calling, one per caller up to max_instances. max_instances is therefore
+  // the max number of simultaneous calls; callers beyond it hear Line Busy.
+  // Idle capacity costs nothing (billing is per running container).
   "containers": [
     {
       "class_name": "VoiceAgentContainer",
       "image": "./Dockerfile",
+      // per-call container size (standard-1 = 1/2 vCPU, 4 GiB)
       "instance_type": "standard-1",
       "max_instances": 25
     }
@@ -50,5 +67,48 @@
       "tag": "v1",
       "new_sqlite_classes": ["VoiceAgentContainer"]
     }
-  ]
+  ],
+
+  "env": {
+    // Prod. Before the first deploy, set its secrets (see deploy-prod.sh) and
+    // add https://voice-agent.cwz.workers.dev to the Google OAuth client's
+    // authorized JavaScript origins.
+    "prod": {
+      "name": "voice-agent",
+      "vars": {
+        "LLM_MODEL": "qwen/qwen3.5-122b-a10b",
+        "AGENT_NAME": "Alex",
+        "GOOGLE_CLIENT_ID": "864010877288-dn88e587ihgpt4r9urhikj26ip1ns347.apps.googleusercontent.com",
+        "ADMIN_EMAILS": "thomas.b@launchventures.co",
+        "CALLS_ENABLED": "true",
+        "MAX_CALL_MINUTES": "30",
+        "DAILY_MINUTES_PER_USER": "0"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "voice-agent-db",
+          "database_id": "a260f74d-809a-42a0-9e86-c1e64720a1d4",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "containers": [
+        {
+          "class_name": "VoiceAgentContainer",
+          "image": "./Dockerfile",
+          "instance_type": "standard-1",
+          // max simultaneous calls in prod - raise as usage grows
+          "max_instances": 50
+        }
+      ],
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "VOICE_AGENT_CONTAINER",
+            "class_name": "VoiceAgentContainer"
+          }
+        ]
+      }
+    }
+  }
 }

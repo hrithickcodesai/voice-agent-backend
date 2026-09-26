@@ -1130,12 +1130,12 @@
       timerInterval = null;
     }
 
-    async function endCall(reason, { busy = false, silent = false } = {}) {
+    async function endCall(reason, { busy = false, silent = false, status: forcedStatus = null } = {}) {
       if (!callActive) return;
       callActive = false;
-      const status = busy ? "busy"
+      const status = forcedStatus ?? (busy ? "busy"
         : reason === "Call Failed" ? "failed"
-        : connectedScreenShown ? "completed" : "cancelled";
+        : connectedScreenShown ? "completed" : "cancelled");
       finishCallLog(status);
       stopRingback();
       stopTimer();
@@ -1274,6 +1274,12 @@
             // container is free, which surfaces here as the error message.
             if (error?.data?.message === "line_busy") {
               endCall("Line Busy", { busy: true });
+            } else if (error?.data?.message === "calls_paused") {
+              // CALLS_ENABLED switched off on the server
+              endCall("Unavailable", { status: "failed" });
+            } else if (error?.data?.message === "daily_limit") {
+              // DAILY_MINUTES_PER_USER reached
+              endCall("Daily Limit Reached", { status: "failed" });
             } else if (error?.data?.message === "sign_in_required") {
               // session expired or signed out in another tab
               endCall("Call Failed", { silent: true });

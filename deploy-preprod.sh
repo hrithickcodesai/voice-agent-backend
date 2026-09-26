@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # Manual/local deploy of the preprod Cloudflare Worker + container.
-# Run directly (./deploy-preprod) or via the pre-push hook (see .githooks/pre-push).
+# Run directly (./deploy-preprod.sh) or via the pre-push hook (see .githooks/pre-push).
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
+
+echo "==> Applying D1 migrations (preprod-voice-agent-db)"
+yes | npx wrangler d1 migrations apply preprod-voice-agent-db --remote
 
 echo "==> Deploying preprod-voice-agent to Cloudflare"
 npx wrangler deploy

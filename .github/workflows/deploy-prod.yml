@@ -1,11 +1,11 @@
-name: Deploy preprod
+name: Deploy prod
 
 on:
   push:
-    branches: [preprod]
+    branches: [prod]
 
 concurrency:
-  group: deploy-preprod
+  group: deploy-prod
   cancel-in-progress: false
 
 jobs:
@@ -24,4 +24,4 @@ jobs:
       - name: Deploy to Cloudflare
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: ./deploy-preprod.sh
+        run: ./deploy-prod.sh

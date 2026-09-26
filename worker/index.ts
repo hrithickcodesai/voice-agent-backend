@@ -12,10 +12,16 @@ interface Env extends ApiEnv, AdminEnv {
   PIPECAT_ICE_SERVERS: string;
   LLM_MODEL: string;
   AGENT_NAME: string;
+  // scaling & cost switches, see wrangler.jsonc
+  CALLS_ENABLED: string;
+  MAX_CALL_MINUTES: string;
+  DAILY_MINUTES_PER_USER: string;
 }
 
-// Hard cap on one call's container, in case the bot never exits.
-const MAX_CALL_MS = 60 * 60 * 1000;
+function minutesVar(value: string | undefined, fallback: number): number {
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
+}
 
 export class VoiceAgentContainer extends Container<Env> {
   defaultPort = 7860;
@@ -36,20 +42,33 @@ export class VoiceAgentContainer extends Container<Env> {
     EXIT_AFTER_CALL: "true",
   };
 
+  private maxCallMs(): number {
+    return minutesVar(this.env.MAX_CALL_MINUTES, 30) * 60_000;
+  }
+
   override async fetch(request: Request): Promise<Response> {
-    if (request.method === "POST" && new URL(request.url).pathname.endsWith("/api/offer")) {
+    const isOffer = request.method === "POST" && new URL(request.url).pathname.endsWith("/api/offer");
+    if (isOffer && !(await this.ctx.storage.get("callStartedAt"))) {
       await this.ctx.storage.put("callStartedAt", Date.now());
+      // MAX_CALL_MINUTES: end the call exactly on time
+      await this.schedule(Math.ceil(this.maxCallMs() / 1000), "endCallAtLimit");
     }
     return super.fetch(request);
+  }
+
+  async endCallAtLimit(): Promise<void> {
+    console.log("call reached MAX_CALL_MINUTES, stopping container");
+    await this.stop();
   }
 
   // The default stops the container once sleepAfter passes without a request
   // - which cut every call off ~2 minutes in, mid-conversation. After the
   // WebRTC offer, the bot owns the lifecycle instead: it exits the container
-  // itself when the caller hangs up or drops (EXIT_AFTER_CALL).
+  // itself when the caller hangs up or drops (EXIT_AFTER_CALL), and
+  // endCallAtLimit enforces MAX_CALL_MINUTES. This is only a backstop.
   override async onActivityExpired(): Promise<void> {
     const startedAt = await this.ctx.storage.get<number>("callStartedAt");
-    if (startedAt && Date.now() - startedAt < MAX_CALL_MS) {
+    if (startedAt && Date.now() - startedAt < this.maxCallMs() + 60_000) {
       this.renewActivityTimeout();
       return;
     }
@@ -144,10 +163,22 @@ export default {
     // container via this cookie instead. The bot shuts the container down
     // when the call ends, and a redial never reuses it.
     if (request.method === "POST" && url.pathname === "/start") {
+      // CALLS_ENABLED kill switch
+      if (env.CALLS_ENABLED === "false") return json(503, { info: "calls_paused" });
       // every call costs real money, so once sign-in is configured only
       // signed-in users can start one
-      if (authEnabled(env) && !(await sessionUserId(request, env.SESSION_SECRET))) {
-        return json(401, { info: "sign_in_required" });
+      const userId = authEnabled(env) ? await sessionUserId(request, env.SESSION_SECRET) : null;
+      if (authEnabled(env) && !userId) return json(401, { info: "sign_in_required" });
+      // DAILY_MINUTES_PER_USER: talk time in the last 24h, including any call
+      // still in progress (its duration is kept current by the heartbeat)
+      const dailyLimit = minutesVar(env.DAILY_MINUTES_PER_USER, 0);
+      if (userId && dailyLimit > 0) {
+        const used = await env.DB.prepare(
+          `SELECT COALESCE(SUM(duration_s), 0) AS s FROM calls WHERE user_id = ?1 AND started_at >= ?2`
+        )
+          .bind(userId, Date.now() - 86_400_000)
+          .first<{ s: number }>();
+        if ((used?.s ?? 0) >= dailyLimit * 60) return json(429, { info: "daily_limit" });
       }
       // Right after other calls end, Cloudflare can hand a new call an
       // instance that's still being torn down ("Container suddenly
