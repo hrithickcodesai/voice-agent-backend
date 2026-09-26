@@ -1,6 +1,8 @@
 import {
   clearedSessionCookie,
   createSessionToken,
+  fetchGooglePhoneNumbers,
+  PHONE_SCOPE,
   sessionCookie,
   sessionUserId,
   verifyGoogleCredential,
@@ -41,6 +43,22 @@ interface UserRow {
   email: string;
   name: string | null;
   picture: string | null;
+  phone_number: string | null;
+  phone_prompted_at: number | null;
+}
+
+// what the browser gets about the signed-in user
+const USER_COLUMNS = "id, email, name, picture, phone_number, phone_prompted_at";
+function publicUser(u: UserRow) {
+  return {
+    id: u.id,
+    email: u.email,
+    name: u.name,
+    picture: u.picture,
+    phone_number: u.phone_number,
+    // offer the one-time "add your phone number" step after signup
+    needs_phone_prompt: !u.phone_number && !u.phone_prompted_at,
+  };
 }
 
 async function signIn(request: Request, env: ApiEnv): Promise<Response> {
@@ -55,20 +73,75 @@ async function signIn(request: Request, env: ApiEnv): Promise<Response> {
     return json(401, { error: "invalid google credential" });
   }
 
+  // Everything Google shared is kept: profile columns refresh on each
+  // sign-in, signup_claims is written once and never overwritten, and
+  // google_claims always holds the latest full claim set.
   const now = Date.now();
+  const claims = JSON.stringify(profile.claims);
   const user = await env.DB.prepare(
-    `INSERT INTO users (id, google_sub, email, name, picture, created_at, last_login_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
+    `INSERT INTO users (id, google_sub, email, name, picture, created_at, last_login_at,
+                        given_name, family_name, email_verified, locale, hosted_domain,
+                        signup_claims, google_claims)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?12)
      ON CONFLICT (google_sub) DO UPDATE SET
        email = excluded.email, name = excluded.name, picture = excluded.picture,
+       given_name = excluded.given_name, family_name = excluded.family_name,
+       email_verified = excluded.email_verified, locale = excluded.locale,
+       hosted_domain = excluded.hosted_domain, google_claims = excluded.google_claims,
        last_login_at = excluded.last_login_at
-     RETURNING id, email, name, picture`
+     RETURNING ${USER_COLUMNS}`
   )
-    .bind(crypto.randomUUID(), profile.sub, profile.email, profile.name ?? null, profile.picture ?? null, now)
+    .bind(
+      crypto.randomUUID(),
+      profile.sub,
+      profile.email,
+      profile.name ?? null,
+      profile.picture ?? null,
+      now,
+      profile.givenName ?? null,
+      profile.familyName ?? null,
+      profile.emailVerified ? 1 : 0,
+      profile.locale ?? null,
+      profile.hostedDomain ?? null,
+      claims
+    )
     .first<UserRow>();
 
   const token = await createSessionToken(user!.id, env.SESSION_SECRET);
-  return json(200, { user }, { "Set-Cookie": sessionCookie(token) });
+  return json(200, { user: publicUser(user!) }, { "Set-Cookie": sessionCookie(token) });
+}
+
+async function savePhoneFromGoogle(request: Request, env: ApiEnv, userId: string): Promise<Response> {
+  const body = await readJson<{ access_token?: string }>(request);
+  if (!body?.access_token) return json(400, { error: "access_token required" });
+  const row = await env.DB.prepare(`SELECT google_sub FROM users WHERE id = ?1`)
+    .bind(userId)
+    .first<{ google_sub: string }>();
+  if (!row) return json(401, { error: "sign in required" });
+
+  let phones;
+  try {
+    phones = await fetchGooglePhoneNumbers(body.access_token, env.GOOGLE_CLIENT_ID, row.google_sub);
+  } catch (err) {
+    console.warn("google phone lookup failed", err);
+    return json(400, { error: String(err instanceof Error ? err.message : err) });
+  }
+  const user = await env.DB.prepare(
+    `UPDATE users SET phone_number = ?1, phone_numbers = ?2, phone_prompted_at = ?3
+     WHERE id = ?4 RETURNING ${USER_COLUMNS}`
+  )
+    .bind(phones.primary, JSON.stringify(phones.all), Date.now(), userId)
+    .first<UserRow>();
+  return json(200, { user: publicUser(user!), found: phones.all.length });
+}
+
+async function skipPhone(env: ApiEnv, userId: string): Promise<Response> {
+  const user = await env.DB.prepare(
+    `UPDATE users SET phone_prompted_at = ?1 WHERE id = ?2 RETURNING ${USER_COLUMNS}`
+  )
+    .bind(Date.now(), userId)
+    .first<UserRow>();
+  return json(200, { user: publicUser(user!) });
 }
 
 async function listCalls(env: ApiEnv, userId: string): Promise<Response> {
@@ -175,7 +248,11 @@ export async function handleApi(request: Request, env: ApiEnv, url: URL): Promis
   const method = request.method;
 
   if (path === "/api/config" && method === "GET") {
-    return json(200, { authEnabled: authEnabled(env), googleClientId: env.GOOGLE_CLIENT_ID || null });
+    return json(200, {
+      authEnabled: authEnabled(env),
+      googleClientId: env.GOOGLE_CLIENT_ID || null,
+      phoneScope: PHONE_SCOPE,
+    });
   }
   if (!authEnabled(env)) return json(404, { error: "sign-in is not configured" });
 
@@ -188,11 +265,13 @@ export async function handleApi(request: Request, env: ApiEnv, url: URL): Promis
   if (!userId) return json(401, { error: "sign in required" });
 
   if (path === "/api/me" && method === "GET") {
-    const user = await env.DB.prepare(`SELECT id, email, name, picture FROM users WHERE id = ?1`)
+    const user = await env.DB.prepare(`SELECT ${USER_COLUMNS} FROM users WHERE id = ?1`)
       .bind(userId)
       .first<UserRow>();
-    return user ? json(200, { user }) : json(401, { error: "sign in required" });
+    return user ? json(200, { user: publicUser(user) }) : json(401, { error: "sign in required" });
   }
+  if (path === "/api/me/phone" && method === "POST") return savePhoneFromGoogle(request, env, userId);
+  if (path === "/api/me/phone/skip" && method === "POST") return skipPhone(env, userId);
   if (path === "/api/calls") {
     if (method === "GET") return listCalls(env, userId);
     if (method === "POST") return createCall(request, env, userId);
