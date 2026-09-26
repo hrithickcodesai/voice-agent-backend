@@ -35,8 +35,9 @@ if (( ${#missing[@]} )); then
   exit 1
 fi
 
+# no TTY (stdin from /dev/null) = wrangler applies pending migrations without asking
 echo "==> Applying D1 migrations (voice-agent-db)"
-yes | npx wrangler d1 migrations apply voice-agent-db --remote --env prod
+npx wrangler d1 migrations apply voice-agent-db --remote --env prod < /dev/null
 
 echo "==> Deploying voice-agent to Cloudflare"
 npx wrangler deploy --env prod

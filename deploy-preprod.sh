@@ -5,8 +5,9 @@ set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
+# no TTY (stdin from /dev/null) = wrangler applies pending migrations without asking
 echo "==> Applying D1 migrations (preprod-voice-agent-db)"
-yes | npx wrangler d1 migrations apply preprod-voice-agent-db --remote
+npx wrangler d1 migrations apply preprod-voice-agent-db --remote < /dev/null
 
 echo "==> Deploying preprod-voice-agent to Cloudflare"
 npx wrangler deploy
