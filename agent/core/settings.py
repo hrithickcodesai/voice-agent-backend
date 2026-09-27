@@ -28,7 +28,18 @@ class AgentSettings(BaseSettings):
     # correction quality degrades; top_p keeps the sampled set coherent
     llm_temperature: float = 0.8
     llm_top_p: float = 0.95
-    llm_max_tokens: int = 512
+    # high enough that a full teaching moment (fix, example, worked phrasing)
+    # never gets cut off mid-sentence; spoken replies stay well under this
+    llm_max_tokens: int = 800
+
+    # openrouter's server-side web plugin on the pipeline llm and the
+    # speculation continuation client: the model can look up current facts
+    # (news, scores, weather, anything after its training). the search runs
+    # before generation on turns that use it (~2.6s added ttft, measured) and
+    # costs only when it fires. the fast speculation opener stays search-free:
+    # its note confines it to a reaction, and a search there would eat the
+    # latency budget the opener exists to save.
+    llm_web_search: bool = True
 
     # reasoning effort for reasoning-only pipeline models (gpt-oss): when set,
     # the openrouter request sends reasoning effort instead of thinking-off
@@ -53,14 +64,17 @@ class AgentSettings(BaseSettings):
     # 0.2 read flat; 0.45 on top of the 0.5 stability floor pushes warmth and
     # emphasis without going back to the swingy pair.
     tts_style: float = 0.45
-    # speech speed multiplier (0.7-1.2 per elevenlabs v3 docs). 0.85: slow and
-    # clear but not dragging; user-tuned between 0.75 and 0.85
-    tts_speed: float = 0.85
+    # speech speed multiplier (0.7-1.2 per elevenlabs v3 docs). 0.75: the
+    # learner copies what they hear - slower beats snappier (seen live: 0.85
+    # read too fast and the first words blurred together)
+    tts_speed: float = 0.75
     # 0-4, higher = lower latency at some pronunciation-accuracy cost. only
     # applied for models other than eleven_v3 (eleven_v3 rejects this param
-    # outright with a 400). 2 instead of 3: for a tutor voice, pronouncing
-    # learner-facing words correctly matters more than the last 100ms.
-    tts_optimize_streaming_latency: int = 2
+    # outright with a 400). 0: the model spins up fully before streaming -
+    # level 1 still clipped the first word ("not much" played as "much", seen
+    # live on turbo v2.5). costs ~100-200ms ttfb per sentence; speculation
+    # hides most llm wait anyway, and a clean sentence start is the point.
+    tts_optimize_streaming_latency: int = 0
 
     # audio
     sample_rate: int = 16000
@@ -95,8 +109,13 @@ class AgentSettings(BaseSettings):
     # stop sits at 0.4s: 0.2s cut utterances off mid-sentence (seen live) but
     # 0.5s added 100ms of dead air before every single turn - 0.4 is the
     # compromise; go back up if learners start getting cut off.
+    # start sits at 0.3s: at 0.2 a noise blip (breath, a tap, a rustle) fired a
+    # barge-in that sliced the bot's reply mid-question with no speech behind
+    # it (seen live: 'what was on your mind?' never played, the user had to ask
+    # 'hello, you are there?'). 0.3 costs a real barge-in 100ms of attack and
+    # requires sound to be sustained before it kills a reply.
     vad_confidence: float = 0.55
-    vad_start_secs: float = 0.2
+    vad_start_secs: float = 0.3
     vad_stop_secs: float = 0.4
     vad_min_volume: float = 0.35
 

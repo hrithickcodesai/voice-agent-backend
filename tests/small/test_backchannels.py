@@ -1,5 +1,5 @@
 import pytest
-from pipecat.frames.frames import LLMContextFrame, LLMTextFrame
+from pipecat.frames.frames import LLMContextFrame
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
@@ -67,7 +67,9 @@ async def test_filter_passes_kickoff_for_real_turn():
     filter_ = BackchannelTurnFilter(enable_direct_mode=True)
     sink = FrameSink()
     filter_.link(sink)
-    kickoff = make_kickoff("Uh, why? What was grammatically wrong in my word, actually?")
+    kickoff = make_kickoff(
+        "Uh, why? What was grammatically wrong in my word, actually?"
+    )
 
     await filter_.process_frame(kickoff, DIRECTIONS)
 

@@ -34,6 +34,8 @@ from agent.llm import (
     resolve_reasoning,
 )
 from agent.processors.backchannels import BackchannelTurnFilter
+from agent.processors.burst_primer import AudioBurstPrimer
+from agent.processors.citation_links import CitationLinkFilter
 from agent.processors.context_window import ContextWindowTrimmer
 from agent.processors.metrics import LatencyMonitor
 from agent.processors.speculative import (
@@ -43,14 +45,17 @@ from agent.processors.speculative import (
 )
 from agent.processors.transcripts import TranscriptLogger
 from agent.processors.voice_tags import VoiceTagFilter
-from agent.prompts import build_system_prompt
+from agent.prompts import build_system_prompt, current_time_note
 
 
-async def _resolve_reasoning_efforts(settings: AgentSettings) -> tuple[str | None, str | None]:
+async def _resolve_reasoning_efforts(
+    settings: AgentSettings,
+) -> tuple[str | None, str | None]:
     """reasoning effort per model: an explicit setting wins, otherwise one
     tiny probe per model - off where the api accepts thinking-off, low where
     it rejects. probes run concurrently; both calls resolve to the values
     every llm client of the session then uses."""
+
     async def resolve(model: str, provider_order: tuple[str, ...], effort: str | None):
         if effort is not None:
             return effort
@@ -61,7 +66,11 @@ async def _resolve_reasoning_efforts(settings: AgentSettings) -> tuple[str | Non
         )
 
     return await asyncio.gather(
-        resolve(settings.llm_model, settings.llm_provider_order, settings.llm_reasoning_effort),
+        resolve(
+            settings.llm_model,
+            settings.llm_provider_order,
+            settings.llm_reasoning_effort,
+        ),
         resolve(
             settings.speculation_model,
             settings.speculation_provider_order,
@@ -132,7 +141,13 @@ async def build_pipeline(
         transcript_logger = TranscriptLogger()
 
         logger.debug("initializing LLM service with model={}", settings.llm_model)
-        system_prompt = build_system_prompt(settings)
+        # current time rides in the prompt, taken once per session: accurate
+        # to the minute, which a voice call never needs more of. no client-side
+        # tool for it - groq's function calling on llama-3.3-70b flakily fails
+        # generation mid-tool-call ('failed_generation' upstream error, seen
+        # live: the whole turn died on 'what's the time there?'), and a prompt
+        # line removes that failure class entirely.
+        system_prompt = f"{build_system_prompt(settings)}\n{current_time_note()}"
         # resolve reasoning handling once per model: an explicit effort wins,
         # otherwise probe the api - thinking-off where accepted, effort low
         # where rejected (reasoning-only models like gpt-oss)
@@ -146,6 +161,7 @@ async def build_pipeline(
             api_key=settings.openrouter_api_key,
             provider_order=settings.llm_provider_order,
             reasoning_effort=llm_effort,
+            web_search=settings.llm_web_search,
             settings=OpenRouterLLMServiceNoThinking.Settings(
                 model=settings.llm_model,
                 temperature=settings.llm_temperature,
@@ -169,11 +185,12 @@ async def build_pipeline(
                 "max_tokens": settings.llm_max_tokens,
             }
             speculation_cache = SpeculationCache()
-            # warm both connection pools now: the first speculation of a
-            # session otherwise pays ~1s of cold tls + ttft and always misses.
             # the fast client routes the speculation model across all of its
-            # serving providers (no pin) at its configured reasoning effort;
-            # the continuation client mirrors the pipeline llm exactly.
+            # serving providers (no pin) at its configured reasoning effort
+            # and gets no web search: its note confines it to a reaction, and
+            # a lookup there would eat the latency budget the opener saves.
+            # the continuation client mirrors the pipeline llm exactly -
+            # search included - so its reply is indistinguishable.
             fast_client = SpeculationReplyClient(
                 model=settings.speculation_model,
                 provider_order=settings.speculation_provider_order,
@@ -184,6 +201,7 @@ async def build_pipeline(
                 model=settings.llm_model,
                 provider_order=settings.llm_provider_order,
                 reasoning_effort=llm_effort,
+                web_search=settings.llm_web_search,
                 **common_client_args,
             )
             fast_client.start_warmup()
@@ -198,7 +216,8 @@ async def build_pipeline(
                 max_calls_per_turn=settings.speculation_max_calls_per_turn,
             )
             # the continuation answers for real, so it runs on the pipeline
-            # model; only the spoken opener comes from the fast speculation
+            # model; only the spoken opener comes from the fast speculation.
+            # the time note is already part of the shared system prompt
             speculation_gate = SpeculationReplyGate(
                 client=continuation_client,
                 cache=speculation_cache,
@@ -236,9 +255,18 @@ async def build_pipeline(
             settings.voice_tags, strip=not settings.uses_emotion_tags()
         )
         tag_stripper = VoiceTagFilter(settings.voice_tags, strip=True)
+        # web-search answers can carry markdown citations ('[fifa.com](...)')
+        # - tts would read them aloud, and a link recorded into context comes
+        # back as spoken characters next turn. same two-position pattern as
+        # the tag guard: one before tts, one before the context recorder.
+        citation_guard = CitationLinkFilter()
+        citation_stripper = CitationLinkFilter()
         # backchannel-only turns ("Okay.", "Uh-") get silence instead of a
         # fabricated reply; the real turn the learner speaks next gets answered
         backchannel_filter = BackchannelTurnFilter()
+        # clients that spin up playback per speaking burst eat the first audio
+        # chunk ("not much" heard as "much") - pad the burst start with silence
+        burst_primer = AudioBurstPrimer()
         monitor = LatencyMonitor()
         context_trimmer = ContextWindowTrimmer(max_turns=settings.context_max_turns)
 
@@ -256,9 +284,12 @@ async def build_pipeline(
             pipeline_frames.append(speculation_gate)
         pipeline_frames += [
             llm,
+            citation_guard,
             tag_guard,
             tts,
             tag_stripper,
+            citation_stripper,
+            burst_primer,
             transport.output(),
             assistant_aggregator,
             monitor,

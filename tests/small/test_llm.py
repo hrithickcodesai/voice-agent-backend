@@ -8,7 +8,10 @@ def test_extra_body_disables_thinking_by_default():
 
 def test_extra_body_pins_providers():
     body = openrouter_extra_body(provider_order=("Novita", "Alibaba"))
-    assert body["provider"] == {"order": ["Novita", "Alibaba"], "allow_fallbacks": False}
+    assert body["provider"] == {
+        "order": ["Novita", "Alibaba"],
+        "allow_fallbacks": False,
+    }
     assert body["reasoning"] == {"enabled": False}
 
 
@@ -23,3 +26,15 @@ def test_extra_body_effort_and_provider_pin_combine():
     body = openrouter_extra_body(provider_order=("Groq",), reasoning_effort="low")
     assert body["reasoning"] == {"effort": "low"}
     assert body["provider"] == {"order": ["Groq"], "allow_fallbacks": False}
+
+
+def test_extra_body_web_search_plugin():
+    body = openrouter_extra_body(web_search=True)
+    assert body["plugins"] == [{"id": "web", "max_results": 3}]
+    assert body["reasoning"] == {"enabled": False}
+
+
+def test_extra_body_has_no_web_search_by_default():
+    """non-lookup turns must keep the no-search fast path: the plugin adds
+    +1.2-1.5s ttft to every request it rides on (measured)."""
+    assert "tools" not in openrouter_extra_body()

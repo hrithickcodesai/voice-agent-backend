@@ -2,6 +2,7 @@ import asyncio
 
 from pipecat.frames.frames import (
     InterimTranscriptionFrame,
+    InterruptionFrame,
     LLMContextFrame,
     LLMFullResponseEndFrame,
     LLMFullResponseStartFrame,
@@ -14,15 +15,26 @@ from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 from agent.processors.speculative import (
+    _SPECULATION_NOTE,
     SpeculationCache,
     SpeculationListener,
     SpeculationReply,
     SpeculationReplyGate,
+    opener_looks_like_completion,
     speculation_covers_turn,
     split_first_sentence,
 )
 
 DIRECTIONS = FrameDirection.DOWNSTREAM
+
+
+def test_speculation_note_bans_unchecked_facts_and_time():
+    """the fast speculation client has no web search and no clock - an opener
+    that stated a fact or the time would be a hallucination. the checking
+    line doubles as the human 'hold on' beat while the real reply looks it
+    up."""
+    assert "never state the current time" in _SPECULATION_NOTE
+    assert "say you are checking it" in _SPECULATION_NOTE
 
 
 class FakeClient:
@@ -31,9 +43,11 @@ class FakeClient:
     def __init__(self, replies: list[list[str]]):
         self.replies = list(replies)
         self.calls: list[list[dict]] = []
+        self.web_search_flags: list[bool | None] = []
 
-    async def stream_reply(self, messages):
+    async def stream_reply(self, messages, web_search: bool | None = None):
         self.calls.append(messages)
+        self.web_search_flags.append(web_search)
         for chunk in self.replies.pop(0):
             yield chunk
 
@@ -154,7 +168,9 @@ async def test_listener_respects_max_calls_per_turn():
     await drain()
     await listener.process_frame(make_interim("one two three four"), DIRECTIONS)
     await drain()
-    await listener.process_frame(make_interim("one two three four five six"), DIRECTIONS)
+    await listener.process_frame(
+        make_interim("one two three four five six"), DIRECTIONS
+    )
     await drain()
 
     assert len(client.calls) == 2
@@ -183,7 +199,10 @@ async def test_listener_resets_on_new_turn():
 async def test_gate_passes_context_frame_through_when_no_reply():
     client = FakeClient([])
     gate = SpeculationReplyGate(
-        client=client, cache=SpeculationCache(), system_prompt="sys", enable_direct_mode=True
+        client=client,
+        cache=SpeculationCache(),
+        system_prompt="sys",
+        enable_direct_mode=True,
     )
     sink = FrameSink()
     gate.link(sink)
@@ -211,10 +230,13 @@ async def test_gate_splices_opener_and_continues_from_prefix():
     sink = FrameSink()
     gate.link(sink)
     context = LLMContext(
-        messages=[{"role": "user", "content": "I watched a time travel movie yesterday"}]
+        messages=[
+            {"role": "user", "content": "I watched a time travel movie yesterday"}
+        ]
     )
 
     await gate.process_frame(LLMContextFrame(context=context), DIRECTIONS)
+    await drain()
 
     kinds = [type(f) for f in sink.frames]
     # the kickoff frame is swallowed so the pipeline llm service stays idle
@@ -246,19 +268,60 @@ async def test_gate_splice_survives_continuation_failure():
         SpeculationReply(text="Just one sentence and no period", partial="keep going")
     )
     gate = SpeculationReplyGate(
-        client=FailingClient(), cache=cache, system_prompt="sys", enable_direct_mode=True
+        client=FailingClient(),
+        cache=cache,
+        system_prompt="sys",
+        enable_direct_mode=True,
     )
     sink = FrameSink()
     gate.link(sink)
 
     context = LLMContext(messages=[{"role": "user", "content": "keep going"}])
     await gate.process_frame(LLMContextFrame(context=context), DIRECTIONS)
+    await drain()
 
     # opener still plays and the response still closes cleanly
     assert sink.frames[0].__class__ is LLMFullResponseStartFrame
     assert sink.frames[-1].__class__ is LLMFullResponseEndFrame
     text = "".join(f.text for f in sink.frames if isinstance(f, LLMTextFrame))
     assert text == "Just one sentence and no period"
+
+
+async def test_gate_cancels_splice_on_interruption():
+    """seen live: the splice ran inline, so a barge-in could neither reach
+    tts nor the assistant aggregator in time, and the splice's end frame
+    committed unspoken continuation text into the context - every later
+    reply then answered that garbage. the interruption must be relayed
+    before the cancelled splice closes the response."""
+
+    class SlowClient:
+        async def stream_reply(self, messages, web_search: bool | None = None):
+            yield " more"
+            await asyncio.sleep(5)
+            yield " never"
+
+    cache = SpeculationCache()
+    cache.put(SpeculationReply(text="Opener. Continue with", partial="hi"))
+    gate = SpeculationReplyGate(
+        client=SlowClient(), cache=cache, system_prompt="sys", enable_direct_mode=True
+    )
+    sink = FrameSink()
+    gate.link(sink)
+    context = LLMContext(messages=[{"role": "user", "content": "hi"}])
+
+    await gate.process_frame(LLMContextFrame(context=context), DIRECTIONS)
+    await drain()
+    await gate.process_frame(InterruptionFrame(), DIRECTIONS)
+    await drain()
+
+    kinds = [type(f) for f in sink.frames]
+    interruption_idx = kinds.index(InterruptionFrame)
+    end_idx = max(i for i, k in enumerate(kinds) if k is LLMFullResponseEndFrame)
+    assert interruption_idx < end_idx, (
+        "interruption must reach downstream state before the splice's end frame"
+    )
+    text = "".join(f.text for f in sink.frames if isinstance(f, LLMTextFrame))
+    assert "never" not in text
 
 
 async def test_gate_cancels_pending_speculation_on_fallback():
@@ -273,7 +336,9 @@ async def test_gate_cancels_pending_speculation_on_fallback():
     gate.link(sink)
 
     await gate.process_frame(
-        LLMContextFrame(context=LLMContext(messages=[{"role": "user", "content": "hi"}])),
+        LLMContextFrame(
+            context=LLMContext(messages=[{"role": "user", "content": "hi"}])
+        ),
         DIRECTIONS,
     )
 
@@ -300,12 +365,44 @@ async def test_gate_waits_for_inflight_speculation_and_splices():
     context = LLMContext(messages=[{"role": "user", "content": "final"}])
 
     await gate.process_frame(LLMContextFrame(context=context), DIRECTIONS)
+    await drain()
 
     kinds = [type(f) for f in sink.frames]
     assert kinds[0] is LLMFullResponseStartFrame
     assert kinds[-1] is LLMFullResponseEndFrame
     text = "".join(f.text for f in sink.frames if isinstance(f, LLMTextFrame))
     assert text == "Ready now. Continue."
+
+
+async def test_gate_counts_splice_hits_and_misses():
+    """the user asked 'is speculative even working?' - the running hit rate
+    makes that answerable from the logs."""
+    client = FakeClient([[" cont."]])
+    cache = SpeculationCache()
+    gate = SpeculationReplyGate(
+        client=client, cache=cache, system_prompt="sys", enable_direct_mode=True
+    )
+    sink = FrameSink()
+    gate.link(sink)
+    # miss: empty cache -> normal path
+    await gate.process_frame(
+        LLMContextFrame(
+            context=LLMContext(messages=[{"role": "user", "content": "a"}])
+        ),
+        DIRECTIONS,
+    )
+    # hit: ready reply -> spliced
+    cache.put(SpeculationReply(text="Spliced. Yes.", partial="a"))
+    await gate.process_frame(
+        LLMContextFrame(
+            context=LLMContext(messages=[{"role": "user", "content": "a"}])
+        ),
+        DIRECTIONS,
+    )
+    await drain()
+
+    assert gate._hits == 1
+    assert gate._misses == 1
 
 
 async def test_gate_wait_times_out_and_runs_normal_path():
@@ -362,7 +459,10 @@ async def test_full_turn_pipeline_splices_and_resets_per_turn():
     """end-to-end over listener -> aggregator -> gate, two turns: turn 1
     splices the speculative reply, turn 2 falls through cleanly."""
     listener_client = FakeClient(
-        [["I can hear you. ", "Loud and clear!"], ["I can hear you. ", "Loud and clear!"]]
+        [
+            ["I can hear you. ", "Loud and clear!"],
+            ["I can hear you. ", "Loud and clear!"],
+        ]
     )
     continuation_client = FakeClient([[" And you?"]])
     cache = SpeculationCache()
@@ -388,24 +488,34 @@ async def test_full_turn_pipeline_splices_and_resets_per_turn():
     assert cache.reply is not None, "speculation should have completed"
 
     await listener.process_frame(
-        TranscriptionFrame(text="What's up? Can you hear me?", user_id="u", timestamp="t"),
+        TranscriptionFrame(
+            text="What's up? Can you hear me?", user_id="u", timestamp="t"
+        ),
         DIRECTIONS,
     )
+    await drain()
 
     splice_frames = [
         f
         for f in sink.frames
-        if isinstance(f, (LLMFullResponseStartFrame, LLMTextFrame, LLMFullResponseEndFrame))
+        if isinstance(
+            f, (LLMFullResponseStartFrame, LLMTextFrame, LLMFullResponseEndFrame)
+        )
     ]
     assert splice_frames, "turn 1 should be spliced"
     starts = [f for f in splice_frames if isinstance(f, LLMFullResponseStartFrame)]
     ends = [f for f in splice_frames if isinstance(f, LLMFullResponseEndFrame)]
-    assert len(starts) == 2 and len(ends) == 2, "opener and continuation are separate responses"
+    assert len(starts) == 2 and len(ends) == 2, (
+        "opener and continuation are separate responses"
+    )
     text = "".join(f.text for f in splice_frames if isinstance(f, LLMTextFrame))
     # opener from the fast speculation + continuation from the 70b client
     assert text == "I can hear you. And you?"
     # the continuation call saw the spoken opener as an assistant prefix
-    assert continuation_client.calls[0][-2] == {"role": "assistant", "content": "I can hear you."}
+    assert continuation_client.calls[0][-2] == {
+        "role": "assistant",
+        "content": "I can hear you.",
+    }
     # the kickoff frame never reaches the sink: the pipeline llm stays idle
     assert not any(isinstance(f, LLMContextFrame) for f in sink.frames)
 
@@ -443,7 +553,9 @@ async def test_listener_stops_scheduling_after_final_transcript():
     assert client.calls and cache.reply is not None
 
     await listener.process_frame(
-        TranscriptionFrame(text="Hey, Scarlett. Can you hear me?", user_id="u", timestamp="t"),
+        TranscriptionFrame(
+            text="Hey, Scarlett. Can you hear me?", user_id="u", timestamp="t"
+        ),
         DIRECTIONS,
     )
     await listener.process_frame(
@@ -496,6 +608,157 @@ def test_speculation_covers_turn_boundaries():
     assert not speculation_covers_turn("", "anything")
 
 
+async def test_gate_rejects_reply_user_has_talked_past():
+    """seen live: the speculation answered "Yeah, my morning is good, Scarlett.
+    Thanks" but the user kept talking ("not a lot of people asks...") before
+    the next turn committed. committed context still held the old turn, so
+    the freshness check passed, the opener was spliced, and the user's own
+    barge-in killed it before any audio played. the latest interim must
+    veto the splice."""
+    client = FakeClient([["never called"]])
+    cache = SpeculationCache()
+    cache.put(
+        SpeculationReply(
+            text="No problem, no problem. Glad to ask.",
+            partial="Yeah, my morning is good, Scarlett. Thanks",
+        )
+    )
+    cache.latest_interim = "Not a lot of people asks, uh, questions like this, but you"
+    gate = SpeculationReplyGate(
+        client=client, cache=cache, system_prompt="sys", enable_direct_mode=True
+    )
+    sink = FrameSink()
+    gate.link(sink)
+    # committed context lags reality: it still holds the turn the user has
+    # already talked past
+    context = LLMContext(
+        messages=[
+            {
+                "role": "user",
+                "content": "Yeah, my morning is good, Scarlett. Thanks for asking.",
+            }
+        ]
+    )
+
+    await gate.process_frame(LLMContextFrame(context=context), DIRECTIONS)
+    await drain()
+
+    # the kickoff passed through so the normal path answers the real speech
+    assert any(isinstance(f, LLMContextFrame) for f in sink.frames)
+    assert client.calls == []
+
+
+async def test_gate_splices_when_interim_matches_final():
+    """a normal end-of-turn splice: the last interim agrees with the committed
+    turn, so the interim check must not reject a fresh reply."""
+    client = FakeClient([[" And you?"]])
+    cache = SpeculationCache()
+    cache.put(SpeculationReply(text="I can hear you. Fine.", partial="can you hear me"))
+    cache.latest_interim = "can you hear me"
+    gate = SpeculationReplyGate(
+        client=client, cache=cache, system_prompt="sys", enable_direct_mode=True
+    )
+    sink = FrameSink()
+    gate.link(sink)
+    context = LLMContext(messages=[{"role": "user", "content": "can you hear me"}])
+
+    await gate.process_frame(LLMContextFrame(context=context), DIRECTIONS)
+    await drain()
+
+    text_frames = [f.text for f in sink.frames if isinstance(f, LLMTextFrame)]
+    assert text_frames[0] == "I can hear you."
+
+
+async def test_listener_tracks_latest_interim_for_gate_freshness():
+    client = FakeClient([])
+    cache = SpeculationCache()
+    listener = make_listener(client, cache, LLMContext())
+
+    await listener.process_frame(make_interim("first words"), DIRECTIONS)
+    assert cache.latest_interim == "first words"
+    await listener.process_frame(make_interim("first words and more"), DIRECTIONS)
+    assert cache.latest_interim == "first words and more"
+
+    # a new turn must not inherit the previous turn's interim
+    await listener.process_frame(UserStartedSpeakingFrame(), DIRECTIONS)
+    assert cache.latest_interim == ""
+
+
+def test_opener_looks_like_completion():
+    """seen live: the 8b model answered the partial "20 to 30 milliseconds
+    just" with "seems slow when you're waiting for a webpage to load..." -
+    it completed the user's sentence instead of replying, and the spoken
+    opener sounded like its first words were missing."""
+    # mid-sentence fragments start lowercase with verbs/adverbs
+    assert opener_looks_like_completion("seems slow when you're waiting for a webpage.")
+    assert opener_looks_like_completion("just a tiny delay, really.")
+    assert opener_looks_like_completion('"just a tiny delay" is all it is.')
+    # fresh replies start capitalized
+    assert not opener_looks_like_completion("That's actually really fast.")
+    assert not opener_looks_like_completion("Twenty to thirty milliseconds is fast.")
+    # lowercase interjections are how casual replies legitimately open
+    assert not opener_looks_like_completion("yeah, I feel that.")
+    assert not opener_looks_like_completion("oh nice, which season?")
+    # nothing to speak is unusable by definition
+    assert opener_looks_like_completion("")
+    assert opener_looks_like_completion("   ")
+
+
+async def test_gate_rejects_sentence_completion_reply():
+    """a speculated reply that continues the user's sentence must not be
+    spliced - spoken aloud it sounds like the first words got dropped."""
+    client = FakeClient([["never called"]])
+    cache = SpeculationCache()
+    cache.put(
+        SpeculationReply(
+            text=(
+                "seems slow when you're waiting for a webpage to load, but for "
+                "a voice conversation, that's actually really fast."
+            ),
+            partial="Wait, wait. 20 to 30 milliseconds just",
+        )
+    )
+    gate = SpeculationReplyGate(
+        client=client, cache=cache, system_prompt="sys", enable_direct_mode=True
+    )
+    sink = FrameSink()
+    gate.link(sink)
+    context = LLMContext(
+        messages=[{"role": "user", "content": "Wait, wait. 20 to 30 milliseconds just"}]
+    )
+
+    await gate.process_frame(LLMContextFrame(context=context), DIRECTIONS)
+    await drain()
+
+    # the kickoff passed through so the normal path replies properly
+    assert any(isinstance(f, LLMContextFrame) for f in sink.frames)
+    assert client.calls == []
+    assert not any(isinstance(f, LLMFullResponseStartFrame) for f in sink.frames)
+
+
+async def test_gate_splices_reply_starting_with_interjection():
+    client = FakeClient([[" And you?"]])
+    cache = SpeculationCache()
+    cache.put(
+        SpeculationReply(
+            text="yeah, all good on my end too.",
+            partial="can you hear me",
+        )
+    )
+    gate = SpeculationReplyGate(
+        client=client, cache=cache, system_prompt="sys", enable_direct_mode=True
+    )
+    sink = FrameSink()
+    gate.link(sink)
+    context = LLMContext(messages=[{"role": "user", "content": "can you hear me"}])
+
+    await gate.process_frame(LLMContextFrame(context=context), DIRECTIONS)
+    await drain()
+
+    text_frames = [f.text for f in sink.frames if isinstance(f, LLMTextFrame)]
+    assert text_frames[0] == "yeah, all good on my end too."
+
+
 async def test_gate_rejects_stale_speculation():
     """a reply to a stale partial must not be spliced: the opener would
     answer a different message than the one that committed."""
@@ -523,6 +786,7 @@ async def test_gate_rejects_stale_speculation():
     )
 
     await gate.process_frame(LLMContextFrame(context=context), DIRECTIONS)
+    await drain()
 
     # the kickoff passed through so the pipeline llm answers the real message
     assert any(isinstance(f, LLMContextFrame) for f in sink.frames)
@@ -549,6 +813,7 @@ async def test_gate_takes_completed_reply_without_waiting_for_inflight():
     context = LLMContext(messages=[{"role": "user", "content": "can you hear me"}])
 
     await gate.process_frame(LLMContextFrame(context=context), DIRECTIONS)
+    await drain()
 
     assert not any(isinstance(f, LLMContextFrame) for f in sink.frames)
     text_frames = [f.text for f in sink.frames if isinstance(f, LLMTextFrame)]
@@ -594,6 +859,7 @@ async def test_gate_falls_back_to_inflight_when_completed_is_stale():
     )
 
     await gate.process_frame(LLMContextFrame(context=context), DIRECTIONS)
+    await drain()
 
     assert not any(isinstance(f, LLMContextFrame) for f in sink.frames)
     text_frames = [f.text for f in sink.frames if isinstance(f, LLMTextFrame)]

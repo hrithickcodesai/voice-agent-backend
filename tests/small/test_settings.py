@@ -97,6 +97,21 @@ def test_settings_has_default_llm_provider_order():
     assert "Novita" in settings.llm_provider_order
 
 
+def test_settings_web_search_on_by_default():
+    """the web plugin is the only search path that covers every real-reply
+    route (pipeline + speculation continuation); the opener stays search-free
+    regardless."""
+    settings = make_settings()
+    assert settings.llm_web_search is True
+    assert make_settings(llm_web_search=False).llm_web_search is False
+
+
+def test_settings_max_tokens_default_allows_full_teaching_replies():
+    """a worked teaching moment (fix, example, phrasing) must never be cut
+    off mid-sentence by the token ceiling."""
+    assert make_settings().llm_max_tokens == 800
+
+
 def test_settings_stt_is_verbatim_by_default():
     """fillers and false starts must reach the llm - they are teaching signals."""
     settings = make_settings()
@@ -111,9 +126,12 @@ def test_settings_vad_tuned_for_noisy_hesitant_speech():
     """confidence 0.7 never triggered turn starts under background noise
     (silero probability drops below it); the volume floor guards soft speech
     over noise. 0.2s stop cut speakers off mid-sentence; 0.5s added 100ms of
-    dead air per turn - 0.4s is the latency/turn-taking compromise."""
+    dead air per turn - 0.4s is the latency/turn-taking compromise. 0.3s
+    start: a noise blip at 0.2s fired a phantom barge-in that cut the bot's
+    reply mid-question (seen live)."""
     settings = make_settings()
     assert settings.vad_confidence == 0.55
+    assert settings.vad_start_secs == 0.3
     assert settings.vad_stop_secs == 0.4
     assert settings.vad_min_volume == 0.35
 

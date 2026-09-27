@@ -7,11 +7,15 @@ from openai import AsyncOpenAI, DefaultAsyncHttpxClient
 from pipecat.services.openrouter.llm import OpenRouterLLMService
 from pipecat.utils.http import connection_limits
 
+from agent.lookup_intent import last_user_text, needs_lookup
+
 _OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 
 def openrouter_extra_body(
-    provider_order: tuple[str, ...] = (), reasoning_effort: str | None = None
+    provider_order: tuple[str, ...] = (),
+    reasoning_effort: str | None = None,
+    web_search: bool = False,
 ) -> dict[str, Any]:
     """request-body extras shared by the pipeline llm service and the
     speculation client:
@@ -26,11 +30,22 @@ def openrouter_extra_body(
     - provider pinning: openrouter routes each model across many providers,
       some serving heavily quantized weights. ``provider.order`` with
       ``allow_fallbacks: false`` restricts routing to the listed providers.
+    - web search: the openrouter web plugin, attached ONLY to turns whose
+      user text looks like a lookup (agent.lookup_intent decides). the plugin
+      always runs one exa search per request it is attached to (measured:
+      +1.2-1.5s ttft and $0.007, every single request) - the newer
+      openrouter:web_search server tool avoids that by being model-invoked,
+      but it 502s on the groq routing (seen live), so intent-gating the
+      plugin is the only combination that keeps non-search replies at
+      full speed. search cost lands on turns that actually need it, where
+      the speculation opener's 'hold on, let me check' covers the wait.
     """
     if reasoning_effort:
         extra_body: dict[str, Any] = {"reasoning": {"effort": reasoning_effort}}
     else:
         extra_body = {"reasoning": {"enabled": False}}
+    if web_search:
+        extra_body["plugins"] = [{"id": "web", "max_results": 3}]
     if provider_order:
         extra_body["provider"] = {
             "order": list(provider_order),
@@ -83,7 +98,8 @@ async def resolve_reasoning(
 
 
 class OpenRouterLLMServiceNoThinking(OpenRouterLLMService):
-    """openrouter service with thinking off and providers pinned.
+    """openrouter service with thinking off, providers pinned and optional
+    server-side web search.
 
     reasoning_effort overrides thinking-off for reasoning-only models
     (gpt-oss cannot disable thinking; low is its floor): the request then
@@ -95,18 +111,27 @@ class OpenRouterLLMServiceNoThinking(OpenRouterLLMService):
         *args,
         provider_order: tuple[str, ...] = (),
         reasoning_effort: str | None = None,
+        web_search: bool = False,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self._provider_order = provider_order
         self._reasoning_effort = reasoning_effort
+        self._web_search = web_search
 
     def build_chat_completion_params(self, params_from_context):
         params = super().build_chat_completion_params(params_from_context)
         extra_body = dict(params.get("extra_body") or {})
+        # search only when this turn's user text asks for something current;
+        # every other reply keeps the no-search ttft
+        web = self._web_search and needs_lookup(
+            last_user_text(params_from_context.get("messages") or [])
+        )
         extra_body.update(
             openrouter_extra_body(
-                self._provider_order, reasoning_effort=self._reasoning_effort
+                self._provider_order,
+                reasoning_effort=self._reasoning_effort,
+                web_search=web,
             )
         )
         params["extra_body"] = extra_body
@@ -132,6 +157,7 @@ class SpeculationReplyClient:
         model: str,
         provider_order: tuple[str, ...] = (),
         reasoning_effort: str | None = None,
+        web_search: bool = False,
         temperature: float = 0.8,
         top_p: float = 0.95,
         max_tokens: int = 512,
@@ -144,7 +170,9 @@ class SpeculationReplyClient:
             "max_tokens": max_tokens,
         }
         self._extra_body = openrouter_extra_body(
-            provider_order, reasoning_effort=reasoning_effort
+            provider_order,
+            reasoning_effort=reasoning_effort,
+            web_search=web_search,
         )
         self._client = AsyncOpenAI(
             api_key=api_key,
@@ -159,13 +187,23 @@ class SpeculationReplyClient:
             ),
         )
 
-    async def stream_reply(self, messages: list[dict[str, Any]]) -> AsyncIterator[str]:
-        """stream reply text deltas for openai-format messages."""
+    async def stream_reply(
+        self, messages: list[dict[str, Any]], web_search: bool | None = None
+    ) -> AsyncIterator[str]:
+        """stream reply text deltas for openai-format messages.
+
+        web_search overrides the client default per call: the gate knows the
+        real user turn (its own last message is the continuation note), so
+        the lookup decision has to be made there and passed in.
+        """
+        extra_body = self._extra_body
+        if web_search is False and "plugins" in extra_body:
+            extra_body = {k: v for k, v in extra_body.items() if k != "plugins"}
         stream = await self._client.chat.completions.create(
             model=self._model,
             messages=messages,
             stream=True,
-            extra_body=self._extra_body,
+            extra_body=extra_body,
             **self._request_params,
         )
         try:

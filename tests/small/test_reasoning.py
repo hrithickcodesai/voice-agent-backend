@@ -1,6 +1,3 @@
-import pytest
-from openai import AsyncOpenAI
-
 from agent.llm import resolve_reasoning
 
 
@@ -61,6 +58,7 @@ async def test_resolve_reasoning_off_when_probe_is_inconclusive():
     """a 5xx or network failure says nothing about support - keep the
     long-standing thinking-off default and let the real turn surface it."""
     for status in (502, 503, None):
+
         class StatusClient:
             class _Completions:
                 async def create(self, **kwargs):
@@ -84,4 +82,7 @@ async def test_resolve_reasoning_rejects_422_and_404():
 
         chat = type("Chat", (), {"completions": _Completions()})()
 
-    assert await resolve_reasoning(api_key="t", model="m", client=NotFoundClient()) == "low"
+    assert (
+        await resolve_reasoning(api_key="t", model="m", client=NotFoundClient())
+        == "low"
+    )
